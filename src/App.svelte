@@ -10,7 +10,7 @@
   let currentScreen = 'splash'; // 'splash', 'play', 'about', 'options'
   let audioEngine = null;
   let audioInitialized = false;
-  
+
   // Scale configuration (defaults)
   let scaleConfig = {
     key: 'C',
@@ -21,36 +21,36 @@
   onMount(() => {
     // Create audio engine immediately (but don't initialize yet)
     audioEngine = new AudioEngine();
-    
+
     // Load saved scale preferences
     loadScalePreferences();
   });
-  
+
   function loadScalePreferences() {
     var savedKey = localStorage.getItem('soundmakers-key');
     var savedScale = localStorage.getItem('soundmakers-scale');
     var savedOctave = localStorage.getItem('soundmakers-octave');
-    
+
     if (savedKey) scaleConfig.key = savedKey;
     if (savedScale) scaleConfig.scale = savedScale;
     if (savedOctave) scaleConfig.octave = parseInt(savedOctave);
-    
+
     console.log('Loaded scale preferences:', scaleConfig);
   }
 
   async function handleSplashClick() {
   document.body.style.setProperty('background-color', 'rgb(170, 174, 182)', 'important');
-  
+
   // Initialize audio context on user interaction (required for iOS)
   if (audioEngine && !audioInitialized) {
     await audioEngine.init();
     audioInitialized = true;
     console.log('Audio initialized from splash screen');
   }
-  
+
   // Show play screen
   currentScreen = 'play';
-  
+
   // CHROME iOS FIX: Wait for layout to settle after transition
   setTimeout(() => {
     window.scrollTo(0, 0);
@@ -106,7 +106,7 @@
       };
       console.log('Scale config updated:', scaleConfig);
     }
-    
+
     document.body.style.setProperty('background-color', 'rgb(170, 174, 182)', 'important');
     currentScreen = 'play';
     // CHROME iOS FIX: Wait for layout to settle after transition
@@ -120,15 +120,15 @@
 </script>
 
 {#if currentScreen === 'splash'}
-  <SplashScreen 
-    title="Squares"
+  <SplashScreen
+    title="Soundmakers Sampler"
     instructions="To play: touch or click screen or use ZXCVBNM,. keys on a keyboard"
     footerNote="On Apple devices, turn off silent mode"
     on:click={handleSplashClick}
   />
 {:else if currentScreen === 'about'}
-  <SplashScreen 
-    title="Squares"
+  <SplashScreen
+    title="Soundmakers Sampler"
     instructions="To play: touch or click screen or use ZXCVBNM,. keys on a keyboard"
     footerNote="On Apple devices, turn off silent mode"
     on:click={handleAboutClose}
@@ -138,16 +138,16 @@
 {:else if currentScreen === 'play'}
   <!-- Icon buttons positioned in top corners -->
   <div style="position: fixed; top: 20px; left: 20px; z-index: 1000;">
-    <IconButton 
-      type="info" 
+    <IconButton
+      type="info"
       ariaLabel="About"
       on:click={handleAboutClick}
     />
   </div>
-  
+
   <div style="position: fixed; top: 20px; right: 65px; z-index: 1000;">
-    <IconButton 
-      type="settings" 
+    <IconButton
+      type="settings"
       ariaLabel="Options"
       on:click={handleOptionsClick}
     />
@@ -169,7 +169,6 @@
     box-sizing: border-box;
     margin: 0;
   }
-
 
   @media (orientation: landscape) and (max-height: 500px) {
     main {
