@@ -1,149 +1,120 @@
 <script>
-  import { createEventDispatcher, onDestroy } from 'svelte';
-  
-  const dispatch = createEventDispatcher();
-  
-  export let color = '#FF4E3A';
-  export let activeColor = 'rgba(255, 255, 255, 0.55)';
-  export let index = 0;
-  export let orientation = 'portrait';
-  export let note = 'C4';
-  export let audioEngine = null;
-  export let isPressed = false;
+  import { createEventDispatcher } from 'svelte';
 
-  let element;
-  let activeTouchId = null;
-  let localPressed = false;
-  
-  $: effectivePressed = isPressed || localPressed;
-  
-  function handlePress() {
-    localPressed = true;
-    if (audioEngine) audioEngine.playNote(note);
-    dispatch('press', { index, note });
-  }
-  
-  function handleRelease() {
-    if (!localPressed) return;
-    localPressed = false;
-    activeTouchId = null;
-    if (audioEngine) audioEngine.stopNote(note);
-    dispatch('release', { index, note });
-  }
-  
+  const dispatch = createEventDispatcher();
+
+  export let index = 0;
+  export let color = '#FF4E3A';
+  export let status = 'empty'; // 'empty' | 'recording' | 'ready'
+
   function handleTouchStart(e) {
     e.preventDefault();
-    if (activeTouchId === null && e.changedTouches.length > 0) {
-      activeTouchId = e.changedTouches[0].identifier;
-      handlePress();
-    }
   }
-  
+
   function handleTouchEnd(e) {
     e.preventDefault();
-    if (activeTouchId !== null) {
-      for (let i = 0; i < e.changedTouches.length; i++) {
-        if (e.changedTouches[i].identifier === activeTouchId) {
-          handleRelease();
-          return;
-        }
-      }
-    }
+    dispatch('tap');
   }
-  
-  function handleTouchCancel(e) {
-    e.preventDefault();
-    if (activeTouchId !== null) {
-      for (let i = 0; i < e.changedTouches.length; i++) {
-        if (e.changedTouches[i].identifier === activeTouchId) {
-          handleRelease();
-          return;
-        }
-      }
-    }
+
+  function handleClick() {
+    dispatch('tap');
   }
-  
-  function handleTouchMove(e) {
-    if (activeTouchId === null || !element) return;
-    
-    let ourTouch = null;
-    for (let i = 0; i < e.touches.length; i++) {
-      if (e.touches[i].identifier === activeTouchId) {
-        ourTouch = e.touches[i];
-        break;
-      }
-    }
-    
-    if (!ourTouch) {
-      handleRelease();
-      return;
-    }
-    
-    const rect = element.getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
-    const x = ourTouch.clientX - centerX;
-    const y = ourTouch.clientY - centerY;
-    const distance = Math.sqrt(x * x + y * y);
-    const radius = Math.min(rect.width, rect.height) / 2;
-    
-    if (distance > radius * 1.5) {
-      handleRelease();
-    }
-  }
-  
-  onDestroy(() => {
-    if (localPressed) handleRelease();
-  });
 </script>
 
-<svelte:window on:blur={handleRelease} />
-
 <div
-  bind:this={element}
   class="square"
-  style="background-color: {effectivePressed ? activeColor : color};"
-  on:mousedown={handlePress}
-  on:mouseup={handleRelease}
-  on:mouseleave={handleRelease}
+  class:recording={status === 'recording'}
+  style="background-color: {status === 'empty' ? '#1a1a1a' : status === 'recording' ? color : color};"
+  on:click={handleClick}
   on:touchstart={handleTouchStart}
   on:touchend={handleTouchEnd}
-  on:touchcancel={handleTouchCancel}
-  on:touchmove={handleTouchMove}
   role="button"
   tabindex="0"
 >
-  <span class="note-label">{note.slice(0, -1)}</span>
+  {#if status === 'empty'}
+    <!-- Mic icon -->
+    <svg class="icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="9" y="2" width="6" height="11" rx="3" fill="rgba(255,255,255,0.5)" />
+      <path d="M5 11a7 7 0 0 0 14 0" stroke="rgba(255,255,255,0.5)" stroke-width="2" stroke-linecap="round" fill="none"/>
+      <line x1="12" y1="18" x2="12" y2="22" stroke="rgba(255,255,255,0.5)" stroke-width="2" stroke-linecap="round"/>
+      <line x1="8" y1="22" x2="16" y2="22" stroke="rgba(255,255,255,0.5)" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+
+  {:else if status === 'recording'}
+    <!-- Pulsing record indicator -->
+    <div class="record-ring">
+      <div class="record-dot"></div>
+    </div>
+
+  {:else if status === 'ready'}
+    <!-- Play icon -->
+    <svg class="icon icon--play" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <polygon points="6,3 20,12 6,21" fill="rgba(0,0,0,0.2)" />
+    </svg>
+  {/if}
 </div>
 
 <style>
   .square {
-    /* Fill the grid cell completely */
     width: 100%;
     height: 100%;
-    
+    display: flex;
+    align-items: center;
+    justify-content: center;
     cursor: pointer;
     user-select: none;
     -webkit-user-select: none;
     -webkit-tap-highlight-color: transparent;
-    transition: background-color 0.08s ease;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Recording pulse animation on the tile itself */
+  .square.recording {
+    animation: pulse-bg 1s ease-in-out infinite alternate;
+  }
+
+  @keyframes pulse-bg {
+    from { filter: brightness(1); }
+    to   { filter: brightness(0.7); }
+  }
+
+  .icon {
+    width: 30%;
+    height: 30%;
+    max-width: 64px;
+    max-height: 64px;
+    pointer-events: none;
+  }
+
+  .icon--play {
+    /* nudge play triangle optically centred */
+    transform: translateX(5%);
+  }
+
+  /* Recording indicator */
+  .record-ring {
+    width: 40%;
+    height: 40%;
+    max-width: 80px;
+    max-height: 80px;
+    border-radius: 50%;
+    border: 3px solid rgba(255, 255, 255, 0.8);
     display: flex;
     align-items: center;
     justify-content: center;
-    
-    /* No border-radius — Keezy style is edge-to-edge rectangles */
-    border-radius: 0;
+    animation: ring-pulse 1s ease-in-out infinite alternate;
   }
-  
-  .square:active {
-    /* Subtle scale on press — keep or remove to taste */
-    filter: brightness(1.15);
+
+  .record-dot {
+    width: 40%;
+    height: 40%;
+    border-radius: 50%;
+    background-color: rgba(255, 0, 0, 0.9);
   }
-  
-  .note-label {
-    font-size: 5vmin;
-    font-weight: bold;
-    color: rgba(0, 0, 0, 0.25);
-    pointer-events: none;
+
+  @keyframes ring-pulse {
+    from { transform: scale(1);    opacity: 1; }
+    to   { transform: scale(1.15); opacity: 0.7; }
   }
 </style>

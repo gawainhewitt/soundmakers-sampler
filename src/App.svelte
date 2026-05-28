@@ -5,42 +5,23 @@
   import SplashScreen from './lib/SplashScreen.svelte';
   import IconButton from './lib/IconButton.svelte';
   import OptionsScreen from './lib/OptionsScreen.svelte';
-  import { AudioEngine } from './lib/AudioEngine.js';
+  import { SamplerEngine } from './lib/SamplerEngine.js';
 
-  let currentScreen = 'splash'; // 'splash', 'play', 'about', 'options'
-  let audioEngine = null;
+  let currentScreen = 'splash';
+  let samplerEngine = null;
   let audioInitialized = false;
 
-  let scaleConfig = {
-    key: 'C',
-    scale: 'major',
-    octave: 4
-  };
-
   onMount(() => {
-    audioEngine = new AudioEngine();
-    loadScalePreferences();
+    samplerEngine = new SamplerEngine();
   });
-
-  function loadScalePreferences() {
-    var savedKey = localStorage.getItem('soundmakers-key');
-    var savedScale = localStorage.getItem('soundmakers-scale');
-    var savedOctave = localStorage.getItem('soundmakers-octave');
-
-    if (savedKey) scaleConfig.key = savedKey;
-    if (savedScale) scaleConfig.scale = savedScale;
-    if (savedOctave) scaleConfig.octave = parseInt(savedOctave);
-
-    console.log('Loaded scale preferences:', scaleConfig);
-  }
 
   async function handleSplashClick() {
     document.body.style.setProperty('background-color', '#000', 'important');
 
-    if (audioEngine && !audioInitialized) {
-      await audioEngine.init();
+    if (samplerEngine && !audioInitialized) {
+      await samplerEngine.init();
       audioInitialized = true;
-      console.log('Audio initialized from splash screen');
+      console.log('SamplerEngine initialised from splash screen');
     }
 
     currentScreen = 'play';
@@ -53,31 +34,21 @@
     }, 100);
   }
 
-  function gracefullyStopAllNotes() {
-    if (audioEngine && audioEngine.activeOscillators) {
-      var activeNotes = Array.from(audioEngine.activeOscillators.keys());
-      activeNotes.forEach(function(note) {
-        audioEngine.stopNote(note);
-      });
-    }
+  function handleOptionsClick() {
+    if (samplerEngine) samplerEngine.panic();
+    document.body.style.setProperty('background-color', 'white', 'important');
+    currentScreen = 'options';
   }
 
   function handleAboutClick() {
-    gracefullyStopAllNotes();
+    if (samplerEngine) samplerEngine.panic();
     document.body.style.setProperty('background-color', 'white', 'important');
     currentScreen = 'about';
-  }
-
-  function handleOptionsClick() {
-    gracefullyStopAllNotes();
-    document.body.style.setProperty('background-color', 'white', 'important');
-    currentScreen = 'options';
   }
 
   function handleAboutClose() {
     document.body.style.setProperty('background-color', '#000', 'important');
     currentScreen = 'play';
-
     setTimeout(() => {
       window.scrollTo(0, 0);
       const vh = window.innerHeight * 0.01;
@@ -87,18 +58,8 @@
   }
 
   function handleOptionsSave(event) {
-    if (event.detail) {
-      scaleConfig = {
-        key: event.detail.key,
-        scale: event.detail.scale,
-        octave: event.detail.octave
-      };
-      console.log('Scale config updated:', scaleConfig);
-    }
-
     document.body.style.setProperty('background-color', '#000', 'important');
     currentScreen = 'play';
-
     setTimeout(() => {
       window.scrollTo(0, 0);
       const vh = window.innerHeight * 0.01;
@@ -111,14 +72,14 @@
 {#if currentScreen === 'splash'}
   <SplashScreen
     title="Soundmakers Sampler"
-    instructions="To play: touch or click screen or use ZXCVBNM, keys on a keyboard"
+    instructions="Tap a tile to record a sound. Tap again to play it back."
     footerNote="On Apple devices, turn off silent mode"
     on:click={handleSplashClick}
   />
 {:else if currentScreen === 'about'}
   <SplashScreen
     title="Soundmakers Sampler"
-    instructions="To play: touch or click screen or use ZXCVBNM, keys on a keyboard"
+    instructions="Tap a tile to record a sound. Tap again to play it back."
     footerNote="On Apple devices, turn off silent mode"
     on:click={handleAboutClose}
   />
@@ -134,7 +95,7 @@
 
   <main>
     <ResponsiveContainer>
-      <GridContainer {audioEngine} {scaleConfig} />
+      <GridContainer {samplerEngine} />
     </ResponsiveContainer>
   </main>
 {/if}
