@@ -11,7 +11,6 @@
   let audioEngine = null;
   let audioInitialized = false;
 
-  // Scale configuration (defaults)
   let scaleConfig = {
     key: 'C',
     scale: 'major',
@@ -19,10 +18,7 @@
   };
 
   onMount(() => {
-    // Create audio engine immediately (but don't initialize yet)
     audioEngine = new AudioEngine();
-
-    // Load saved scale preferences
     loadScalePreferences();
   });
 
@@ -39,35 +35,30 @@
   }
 
   async function handleSplashClick() {
-  document.body.style.setProperty('background-color', 'rgb(170, 174, 182)', 'important');
+    document.body.style.setProperty('background-color', '#000', 'important');
 
-  // Initialize audio context on user interaction (required for iOS)
-  if (audioEngine && !audioInitialized) {
-    await audioEngine.init();
-    audioInitialized = true;
-    console.log('Audio initialized from splash screen');
+    if (audioEngine && !audioInitialized) {
+      await audioEngine.init();
+      audioInitialized = true;
+      console.log('Audio initialized from splash screen');
+    }
+
+    currentScreen = 'play';
+
+    setTimeout(() => {
+      window.scrollTo(0, 0);
+      const vh = window.innerHeight * 0.01;
+      document.documentElement.style.setProperty('--vh', `${vh}px`);
+      window.dispatchEvent(new Event('resize'));
+    }, 100);
   }
 
-  // Show play screen
-  currentScreen = 'play';
-
-  // CHROME iOS FIX: Wait for layout to settle after transition
-  setTimeout(() => {
-    window.scrollTo(0, 0);
-    const vh = window.innerHeight * 0.01;
-    document.documentElement.style.setProperty('--vh', `${vh}px`);
-    window.dispatchEvent(new Event('resize'));
-  }, 100);
-}
-
   function gracefullyStopAllNotes() {
-    // Get all active notes and stop them gracefully (with release envelope)
     if (audioEngine && audioEngine.activeOscillators) {
       var activeNotes = Array.from(audioEngine.activeOscillators.keys());
       activeNotes.forEach(function(note) {
         audioEngine.stopNote(note);
       });
-      console.log('Gracefully stopped all notes');
     }
   }
 
@@ -84,10 +75,9 @@
   }
 
   function handleAboutClose() {
-    document.body.style.setProperty('background-color', 'rgb(170, 174, 182)', 'important');
+    document.body.style.setProperty('background-color', '#000', 'important');
     currentScreen = 'play';
 
-    // CHROME iOS FIX: Wait for layout to settle after transition
     setTimeout(() => {
       window.scrollTo(0, 0);
       const vh = window.innerHeight * 0.01;
@@ -97,7 +87,6 @@
   }
 
   function handleOptionsSave(event) {
-  // Update scale configuration with new selections
     if (event.detail) {
       scaleConfig = {
         key: event.detail.key,
@@ -107,9 +96,9 @@
       console.log('Scale config updated:', scaleConfig);
     }
 
-    document.body.style.setProperty('background-color', 'rgb(170, 174, 182)', 'important');
+    document.body.style.setProperty('background-color', '#000', 'important');
     currentScreen = 'play';
-    // CHROME iOS FIX: Wait for layout to settle after transition
+
     setTimeout(() => {
       window.scrollTo(0, 0);
       const vh = window.innerHeight * 0.01;
@@ -122,35 +111,25 @@
 {#if currentScreen === 'splash'}
   <SplashScreen
     title="Soundmakers Sampler"
-    instructions="To play: touch or click screen or use ZXCVBNM,. keys on a keyboard"
+    instructions="To play: touch or click screen or use ZXCVBNM, keys on a keyboard"
     footerNote="On Apple devices, turn off silent mode"
     on:click={handleSplashClick}
   />
 {:else if currentScreen === 'about'}
   <SplashScreen
     title="Soundmakers Sampler"
-    instructions="To play: touch or click screen or use ZXCVBNM,. keys on a keyboard"
+    instructions="To play: touch or click screen or use ZXCVBNM, keys on a keyboard"
     footerNote="On Apple devices, turn off silent mode"
     on:click={handleAboutClose}
   />
 {:else if currentScreen === 'options'}
   <OptionsScreen on:save={handleOptionsSave} />
 {:else if currentScreen === 'play'}
-  <!-- Icon buttons positioned in top corners -->
-  <div style="position: fixed; top: 20px; left: 20px; z-index: 1000;">
-    <IconButton
-      type="info"
-      ariaLabel="About"
-      on:click={handleAboutClick}
-    />
+  <div class="icon-top-left">
+    <IconButton type="info" ariaLabel="About" on:click={handleAboutClick} />
   </div>
-
-  <div style="position: fixed; top: 20px; right: 65px; z-index: 1000;">
-    <IconButton
-      type="settings"
-      ariaLabel="Options"
-      on:click={handleOptionsClick}
-    />
+  <div class="icon-top-right">
+    <IconButton type="settings" ariaLabel="Options" on:click={handleOptionsClick} />
   </div>
 
   <main>
@@ -162,17 +141,24 @@
 
 <style>
   main {
-    text-align: center;
-    padding: 1em;
     width: 100%;
-    max-width: 100%;
-    box-sizing: border-box;
+    height: 100%;
     margin: 0;
+    padding: 0;
+    display: flex;
   }
 
-  @media (orientation: landscape) and (max-height: 500px) {
-    main {
-        padding: 0.5em;
-      }
-    }
+  .icon-top-left {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    z-index: 1000;
+  }
+
+  .icon-top-right {
+    position: fixed;
+    top: 20px;
+    right: 65px;
+    z-index: 1000;
+  }
 </style>

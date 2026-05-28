@@ -5,27 +5,43 @@
   
   export let audioEngine;
   export let scaleConfig = { key: 'C', scale: 'major', octave: 4 };
-  
-  let squares = Array.from({ length: 9 }, function(_, i) { return i; });
+
+  // ── Keezy colour palette ──────────────────────────────────────────────────
+  // Easy to swap: just edit this array (one colour per square, index 0–7)
+  const SQUARE_COLORS = [
+    '#FF4E3A', // red-orange
+    '#FFD05A', // yellow
+    '#6EEAA0', // mint green
+    '#A8C86A', // olive green
+    '#FF6B9D', // hot pink
+    '#FF9130', // orange
+    '#B97FE8', // purple
+    '#5BEDA0', // bright green
+  ];
+
+  // Active (pressed) colour — same for all squares, easy to change
+  const ACTIVE_COLOR = 'rgba(255, 255, 255, 0.55)';
+  // ─────────────────────────────────────────────────────────────────────────
+
+  let squares = Array.from({ length: 8 }, function(_, i) { return i; });
   let orientation = 'portrait';
   let cleanupInterval;
   let scaleGenerator = new ScaleGenerator();
   
-  // Generate scale based on configuration
+  // Generate scale based on configuration (use first 8 of the 9 notes)
   let scale = [];
   $: {
-    scale = scaleGenerator.generateScale(
+    var full = scaleGenerator.generateScale(
       scaleConfig.key,
       scaleConfig.scale,
       scaleConfig.octave
     );
-    console.log('Generated scale:', scale);
-    
-    // Reset square states when scale changes
+    scale = full.slice(0, 8);
+    console.log('Generated scale (8 notes):', scale);
     resetSquareStates();
   }
   
-  // Map keyboard keys to square indices
+  // Map keyboard keys to square indices (dropped '.' — now 8 keys)
   var keyMap = {
     'z': 0,
     'x': 1,
@@ -34,11 +50,9 @@
     'b': 4,
     'n': 5,
     'm': 6,
-    ',': 7,
-    '.': 8
+    ',': 7
   };
   
-  // Track which squares are pressed
   let squareStates = {};
   
   function resetSquareStates() {
@@ -50,76 +64,52 @@
     });
   }
   
-  // Track which keys are currently held down (prevent key repeat)
   let heldKeys = new Set();
   
   onMount(() => {
-    // Initialize square states
     resetSquareStates();
+    updateOrientation();
     
-    // Periodic cleanup - check for orphaned oscillators
     cleanupInterval = setInterval(function() {
       if (audioEngine) {
-        // First do smart cleanup based on square states
         smartCleanup();
-        // Then do nuclear cleanup of any orphaned oscillators (passing square states)
         audioEngine.cleanupOrphanedOscillators(squareStates);
       }
-    }, 1000); // Check every 1 second
+    }, 1000);
     
-    // Add global panic button and keyboard handlers
     window.addEventListener('keydown', handleKeydown);
     window.addEventListener('keyup', handleKeyup);
-    
-    // Stop all notes when page loses focus or visibility
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('blur', handleWindowBlur);
   });
   
   onDestroy(() => {
-    if (cleanupInterval) {
-      clearInterval(cleanupInterval);
-    }
+    if (cleanupInterval) clearInterval(cleanupInterval);
     window.removeEventListener('keydown', handleKeydown);
     window.removeEventListener('keyup', handleKeyup);
     document.removeEventListener('visibilitychange', handleVisibilityChange);
     window.removeEventListener('blur', handleWindowBlur);
-    
-    // Panic on unmount
-    if (audioEngine) {
-      audioEngine.panic();
-    }
+    if (audioEngine) audioEngine.panic();
   });
   
   function handleVisibilityChange() {
     if (document.hidden && audioEngine) {
-      console.log('Page hidden - stopping all notes');
       audioEngine.panic();
-      // Reset all square states
-      Object.keys(squareStates).forEach(function(note) {
-        squareStates[note] = false;
-      });
+      Object.keys(squareStates).forEach(function(note) { squareStates[note] = false; });
       heldKeys.clear();
     }
   }
   
   function handleWindowBlur() {
     if (audioEngine) {
-      console.log('Window blur - stopping all notes');
       audioEngine.panic();
-      // Reset all square states
-      Object.keys(squareStates).forEach(function(note) {
-        squareStates[note] = false;
-      });
+      Object.keys(squareStates).forEach(function(note) { squareStates[note] = false; });
       heldKeys.clear();
     }
   }
   
   function smartCleanup() {
-    // Get all currently playing notes
     var playingNotes = Array.from(audioEngine.activeOscillators.keys());
-    
-    // Stop any notes that are playing but their square is not pressed
     playingNotes.forEach(function(note) {
       if (!squareStates[note]) {
         console.warn('Cleaning up stuck note:', note);
@@ -129,35 +119,23 @@
   }
   
   function handleKeydown(e) {
-    // Press 'P' key to panic (stop all notes)
     if (e.key === 'p' || e.key === 'P') {
       if (audioEngine) {
         audioEngine.panic();
-        // Reset all square states
-        Object.keys(squareStates).forEach(function(note) {
-          squareStates[note] = false;
-        });
+        Object.keys(squareStates).forEach(function(note) { squareStates[note] = false; });
         heldKeys.clear();
       }
       return;
     }
     
-    // Handle instrument keys (zxcvbnm,.)
     var key = e.key.toLowerCase();
     if (keyMap.hasOwnProperty(key)) {
-      // Prevent key repeat - only trigger on first press
       if (heldKeys.has(key)) return;
       heldKeys.add(key);
-      
       var squareIndex = keyMap[key];
       var note = scale[squareIndex];
-      
-      // Trigger press
       squareStates[note] = true;
-      if (audioEngine) {
-        audioEngine.playNote(note);
-      }
-      console.log('Key pressed:', key, '→', note);
+      if (audioEngine) audioEngine.playNote(note);
     }
   }
   
@@ -165,25 +143,16 @@
     var key = e.key.toLowerCase();
     if (keyMap.hasOwnProperty(key)) {
       heldKeys.delete(key);
-      
       var squareIndex = keyMap[key];
       var note = scale[squareIndex];
-      
-      // Trigger release
       squareStates[note] = false;
-      if (audioEngine) {
-        audioEngine.stopNote(note);
-      }
-      console.log('Key released:', key, '→', note);
+      if (audioEngine) audioEngine.stopNote(note);
     }
   }
   
   async function initAudio() {
-    // Audio should already be initialized from splash screen
-    // But we can resume if suspended
     if (audioEngine && audioEngine.audioContext && audioEngine.audioContext.state === 'suspended') {
       await audioEngine.audioContext.resume();
-      console.log('Audio context resumed:', audioEngine.audioContext.state);
     }
   }
   
@@ -191,35 +160,27 @@
     orientation = window.innerHeight > window.innerWidth ? 'portrait' : 'landscape';
   }
   
-  $: {
-    if (typeof window !== 'undefined') {
-      updateOrientation();
-    }
-  }
-  
   async function handlePress(event) {
     await initAudio();
     squareStates[event.detail.note] = true;
-    console.log('Square pressed:', event.detail.note);
   }
   
   function handleRelease(event) {
     squareStates[event.detail.note] = false;
-    console.log('Square released:', event.detail.note);
   }
 </script>
 
 <svelte:window on:resize={updateOrientation} />
 
-<div class="container {orientation}">
+<div class="grid {orientation}">
   {#each squares as index}
-  <Square 
+    <Square
       {index}
       {orientation}
       {audioEngine}
       note={scale[index]}
-      color={index % 2 === 0 ? 'rgb(255, 255, 0)' : 'rgb(0, 0, 255)'}
-      activeColor="rgb(255, 0, 255)"
+      color={SQUARE_COLORS[index]}
+      activeColor={ACTIVE_COLOR}
       isPressed={squareStates[scale[index]]}
       on:press={handlePress}
       on:release={handleRelease}
@@ -228,30 +189,22 @@
 </div>
 
 <style>
-  .container {
+  .grid {
     display: grid;
-    gap: 2vh;
-    padding: 7vh 2vh 2vh 2vh;
-    height: 100%;
     width: 100%;
-    place-items: center;
-    place-content: center;
+    height: 100%;
+    gap: 0;
   }
 
-  @media (orientation: landscape) {
-  .container {
-    max-width: 100vh; /* or whatever value works */
-    margin: 0 auto;
+  /* Portrait: 2 columns, 4 rows */
+  .grid.portrait {
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(4, 1fr);
   }
-}
-  
-  .container.portrait {
-    grid-template-columns: repeat(3, 1fr);
-    grid-template-rows: repeat(3, 1fr);
-  }
-  
-  .container.landscape {
-    grid-template-columns: repeat(3, 1fr);
-    grid-template-rows: repeat(3, 1fr);
+
+  /* Landscape: 4 columns, 2 rows */
+  .grid.landscape {
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: repeat(2, 1fr);
   }
 </style>
