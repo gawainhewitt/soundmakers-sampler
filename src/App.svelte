@@ -11,6 +11,10 @@
   let samplerEngine = null;
   let audioInitialized = false;
 
+  // Tile statuses live here so they survive screen changes
+  // 'empty' | 'recording' | 'ready'
+  let tileStatuses = Array(8).fill('empty');
+
   onMount(() => {
     samplerEngine = new SamplerEngine();
   });
@@ -35,13 +39,11 @@
   }
 
   function handleOptionsClick() {
-    if (samplerEngine) samplerEngine.panic();
     document.body.style.setProperty('background-color', 'white', 'important');
     currentScreen = 'options';
   }
 
   function handleAboutClick() {
-    if (samplerEngine) samplerEngine.panic();
     document.body.style.setProperty('background-color', 'white', 'important');
     currentScreen = 'about';
   }
@@ -85,7 +87,10 @@
   />
 {:else if currentScreen === 'options'}
   <OptionsScreen on:save={handleOptionsSave} />
-{:else if currentScreen === 'play'}
+{/if}
+
+<!-- Keep GridContainer always mounted so tileStatuses and samplerEngine state are preserved -->
+<div class="play-layer" class:hidden={currentScreen !== 'play'}>
   <div class="icon-top-left">
     <IconButton type="info" ariaLabel="About" on:click={handleAboutClick} />
   </div>
@@ -95,12 +100,25 @@
 
   <main>
     <ResponsiveContainer>
-      <GridContainer {samplerEngine} />
+      <GridContainer {samplerEngine} bind:tileStatuses />
     </ResponsiveContainer>
   </main>
-{/if}
+</div>
 
 <style>
+  .play-layer {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+  }
+
+  .play-layer.hidden {
+    display: none;
+  }
+
   main {
     width: 100%;
     height: 100%;
