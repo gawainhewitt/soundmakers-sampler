@@ -254,7 +254,10 @@ export class SamplerEngine {
     source.buffer = tile.buffer;
     console.log('source.buffer duration:', source.buffer.duration, 'length:', source.buffer.length);
     source.loop = loop;
-    source.connect(this.audioContext.destination);
+    var gainNode = this.audioContext.createGain();
+    gainNode.gain.value = 1.0;
+    source.connect(gainNode);
+    gainNode.connect(this.audioContext.destination);
     source.start(0);
 
     var self = this;
