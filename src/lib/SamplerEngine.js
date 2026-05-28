@@ -1,6 +1,6 @@
 // SamplerEngine.js
 // Web Audio API sampler — no dependencies, iOS 12 compatible
-// Uses ScriptProcessorNode for recording (no MediaRecorder needed)
+// Uses ScriptProcessorNode for recording, WAV encoding + decodeAudioData for playback buffers
 
 export class SamplerEngine {
   constructor() {
@@ -13,7 +13,7 @@ export class SamplerEngine {
       return { status: 'empty', buffer: null };
     });
 
-    // Active playback sources (so we can stop them)
+    // Active playback sources
     // Key: tileIndex, Value: AudioBufferSourceNode
     this.activeSources = new Map();
 
@@ -22,7 +22,7 @@ export class SamplerEngine {
     this.micSource = null;
     this.scriptProcessor = null;
     this.recordingTileIndex = null;
-    this.recordingChunks = []; // array of Float32Array (mono PCM)
+    this.recordingChunks = [];
     this.recordingSampleRate = null;
   }
 
@@ -51,18 +51,15 @@ export class SamplerEngine {
 
   async requestMicAccess() {
     try {
-      // Use the older callback-style as a fallback for iOS 12
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         this.micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       } else if (navigator.getUserMedia) {
-        // Legacy API — iOS 12 Safari may need this
         this.micStream = await new Promise(function(resolve, reject) {
           navigator.getUserMedia({ audio: true, video: false }, resolve, reject);
         });
       } else {
         throw new Error('getUserMedia not supported');
       }
-
       console.log('SamplerEngine: microphone access granted');
       return true;
     } catch (error) {
@@ -71,7 +68,7 @@ export class SamplerEngine {
     }
   }
 
-  // ── Recording (ScriptProcessorNode — works on iOS 12) ────────────────────
+  // ── Recording ─────────────────────────────────────────────────────────────
 
   async startRecording(tileIndex) {
     if (!this.initialized) {
@@ -79,19 +76,16 @@ export class SamplerEngine {
       return false;
     }
 
-    // Stop any existing recording first
     if (this.recordingTileIndex !== null) {
       await this.stopRecording(this.recordingTileIndex);
     }
 
-    // Request mic if we don't have it yet
     if (!this.micStream) {
       var granted = await this.requestMicAccess();
       if (!granted) return false;
     }
 
     try {
-      // Resume context on iOS (requires user gesture chain)
       if (this.audioContext.state === 'suspended') {
         await this.audioContext.resume();
       }
@@ -101,17 +95,12 @@ export class SamplerEngine {
       this.recordingSampleRate = this.audioContext.sampleRate;
       this.tiles[tileIndex].status = 'recording';
 
-      // Wire up: mic → scriptProcessor → destination (silent output keeps context alive on iOS)
       this.micSource = this.audioContext.createMediaStreamSource(this.micStream);
-
-      // bufferSize 4096 is a safe choice for iOS 12
-      // 1 input channel, 1 output channel
       this.scriptProcessor = this.audioContext.createScriptProcessor(4096, 1, 1);
 
       var self = this;
       this.scriptProcessor.onaudioprocess = function(e) {
         if (self.recordingTileIndex === tileIndex) {
-          // Copy the input buffer (don't hold a reference — it gets reused)
           var input = e.inputBuffer.getChannelData(0);
           var chunk = new Float32Array(input.length);
           chunk.set(input);
@@ -120,7 +109,6 @@ export class SamplerEngine {
       };
 
       this.micSource.connect(this.scriptProcessor);
-      // Must connect to destination or onaudioprocess won't fire on iOS
       this.scriptProcessor.connect(this.audioContext.destination);
 
       console.log('SamplerEngine: recording started for tile', tileIndex);
@@ -140,7 +128,6 @@ export class SamplerEngine {
     }
 
     try {
-      // Disconnect the script processor
       if (this.scriptProcessor) {
         this.scriptProcessor.disconnect();
         this.scriptProcessor.onaudioprocess = null;
@@ -151,7 +138,7 @@ export class SamplerEngine {
         this.micSource = null;
       }
 
-      // Assemble all chunks into a single Float32Array
+      // Assemble PCM chunks
       var totalLength = this.recordingChunks.reduce(function(acc, chunk) {
         return acc + chunk.length;
       }, 0);
@@ -163,13 +150,14 @@ export class SamplerEngine {
         offset += this.recordingChunks[i].length;
       }
 
-      // Create an AudioBuffer directly from the PCM data (no encoding/decoding needed)
-      var audioBuffer = this.audioContext.createBuffer(
-        1,                          // mono
-        pcmData.length,
-        this.recordingSampleRate
-      );
-      audioBuffer.getChannelData(0).set(pcmData);
+      // Encode to WAV and decode via decodeAudioData
+      // This code path is more reliable on iOS 12 than createBuffer + set()
+      var wavBuffer = this._encodeWAV(pcmData, this.recordingSampleRate);
+      var self = this;
+
+      var audioBuffer = await new Promise(function(resolve, reject) {
+        self.audioContext.decodeAudioData(wavBuffer, resolve, reject);
+      });
 
       this.tiles[tileIndex].buffer = audioBuffer;
       this.tiles[tileIndex].status = 'ready';
@@ -193,10 +181,57 @@ export class SamplerEngine {
     }
   }
 
+  // ── WAV encoding ──────────────────────────────────────────────────────────
+  // Encodes mono Float32Array PCM into a 16-bit WAV ArrayBuffer
+  // iOS 12 decodeAudioData handles this reliably
+
+  _encodeWAV(pcmFloat32, sampleRate) {
+    var numChannels = 1;
+    var bitsPerSample = 16;
+    var bytesPerSample = bitsPerSample / 8;
+    var blockAlign = numChannels * bytesPerSample;
+    var byteRate = sampleRate * blockAlign;
+    var dataLength = pcmFloat32.length * bytesPerSample;
+    var bufferLength = 44 + dataLength;
+
+    var buffer = new ArrayBuffer(bufferLength);
+    var view = new DataView(buffer);
+
+    // WAV header
+    this._writeString(view, 0, 'RIFF');
+    view.setUint32(4, 36 + dataLength, true);
+    this._writeString(view, 8, 'WAVE');
+    this._writeString(view, 12, 'fmt ');
+    view.setUint32(16, 16, true);           // PCM chunk size
+    view.setUint16(20, 1, true);            // PCM format
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, byteRate, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, bitsPerSample, true);
+    this._writeString(view, 36, 'data');
+    view.setUint32(40, dataLength, true);
+
+    // Convert Float32 samples to Int16
+    var dataOffset = 44;
+    for (var i = 0; i < pcmFloat32.length; i++) {
+      var s = Math.max(-1, Math.min(1, pcmFloat32[i]));
+      view.setInt16(dataOffset, s < 0 ? s * 32768 : s * 32767, true);
+      dataOffset += 2;
+    }
+
+    return buffer;
+  }
+
+  _writeString(view, offset, str) {
+    for (var i = 0; i < str.length; i++) {
+      view.setUint8(offset + i, str.charCodeAt(i));
+    }
+  }
+
   // ── Playback ──────────────────────────────────────────────────────────────
 
   playTile(tileIndex, options) {
-    console.log('context state at playback:', this.audioContext.state);
     var loop = options && options.loop ? options.loop : false;
     var tile = this.tiles[tileIndex];
 
@@ -205,12 +240,13 @@ export class SamplerEngine {
       return;
     }
 
-    // Stop any existing playback on this tile
     this.stopTile(tileIndex);
 
     if (this.audioContext.state === 'suspended') {
       this.audioContext.resume();
     }
+
+    console.log('context state at playback:', this.audioContext.state);
 
     var source = this.audioContext.createBufferSource();
     source.buffer = tile.buffer;
@@ -254,14 +290,11 @@ export class SamplerEngine {
   // ── Panic ─────────────────────────────────────────────────────────────────
 
   panic() {
-    // Stop all playback
-    var self = this;
     this.activeSources.forEach(function(source) {
       try { source.stop(0); } catch (e) { /* ignore */ }
     });
     this.activeSources.clear();
 
-    // Stop any in-progress recording cleanly
     if (this.scriptProcessor) {
       this.scriptProcessor.disconnect();
       this.scriptProcessor.onaudioprocess = null;
