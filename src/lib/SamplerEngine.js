@@ -187,6 +187,8 @@ export class SamplerEngine {
   // Encodes mono Float32Array PCM into a 16-bit WAV ArrayBuffer
   // iOS 12 decodeAudioData handles this reliably
 
+  console.log('pcmData first 5 samples:', pcmData[0], pcmData[1], pcmData[2], pcmData[3], pcmData[4]);
+
   _encodeWAV(pcmFloat32, sampleRate) {
     var numChannels = 1;
     var bitsPerSample = 16;
