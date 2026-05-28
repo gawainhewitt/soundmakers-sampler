@@ -196,6 +196,7 @@ export class SamplerEngine {
   // ── Playback ──────────────────────────────────────────────────────────────
 
   playTile(tileIndex, options) {
+    console.log('context state at playback:', this.audioContext.state);
     var loop = options && options.loop ? options.loop : false;
     var tile = this.tiles[tileIndex];
 
