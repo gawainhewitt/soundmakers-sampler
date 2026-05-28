@@ -162,6 +162,8 @@ export class SamplerEngine {
       this.tiles[tileIndex].buffer = audioBuffer;
       this.tiles[tileIndex].status = 'ready';
 
+      console.log('tile', tileIndex, 'buffer stored, duration:', this.tiles[tileIndex].buffer.duration, 'status:', this.tiles[tileIndex].status);
+
       console.log(
         'SamplerEngine: recording stopped for tile', tileIndex,
         '— duration:', audioBuffer.duration.toFixed(2) + 's',
@@ -250,6 +252,7 @@ export class SamplerEngine {
 
     var source = this.audioContext.createBufferSource();
     source.buffer = tile.buffer;
+    console.log('source.buffer duration:', source.buffer.duration, 'length:', source.buffer.length);
     source.loop = loop;
     source.connect(this.audioContext.destination);
     source.start(0);
