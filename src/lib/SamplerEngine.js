@@ -49,7 +49,7 @@ export class SamplerEngine {
   // ── Microphone setup — called once ───────────────────────────────────────
 
   async setupMic() {
-    if (this.micStream) return true; // already set up
+    if (this.micStream) return true;
 
     try {
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
@@ -64,12 +64,10 @@ export class SamplerEngine {
 
       console.log('SamplerEngine: microphone access granted');
 
-      // Resume context — iOS 12 needs this
       if (this.audioContext.state === 'suspended') {
         await this.audioContext.resume();
       }
 
-      // Create mic source and script processor once
       this.micSource = this.audioContext.createMediaStreamSource(this.micStream);
       this.scriptProcessor = this.audioContext.createScriptProcessor(4096, 1, 1);
 
@@ -82,7 +80,6 @@ export class SamplerEngine {
         self.recordingChunks.push(chunk);
       };
 
-      // Connect permanently — stays connected for the lifetime of the engine
       this.micSource.connect(this.scriptProcessor);
       this.scriptProcessor.connect(this.audioContext.destination);
 
@@ -103,12 +100,10 @@ export class SamplerEngine {
       return false;
     }
 
-    // Stop any existing recording first
     if (this.recordingTileIndex !== null) {
       await this.stopRecording(this.recordingTileIndex);
     }
 
-    // Set up mic pipeline if not done yet
     var ready = await this.setupMic();
     if (!ready) return false;
 
@@ -128,12 +123,10 @@ export class SamplerEngine {
       return false;
     }
 
-    // Stop capturing immediately
     this.isCapturing = false;
     this.recordingTileIndex = null;
 
     try {
-      // Assemble PCM chunks
       var totalLength = this.recordingChunks.reduce(function(acc, chunk) {
         return acc + chunk.length;
       }, 0);
@@ -145,9 +138,6 @@ export class SamplerEngine {
         offset += this.recordingChunks[i].length;
       }
 
-      console.log('pcmData first 5 samples:', pcmData[0], pcmData[1], pcmData[2], pcmData[3], pcmData[4]);
-
-      // Encode to WAV and decode via decodeAudioData
       var wavBuffer = this._encodeWAV(pcmData, this.recordingSampleRate);
       var self = this;
 
@@ -160,8 +150,7 @@ export class SamplerEngine {
 
       console.log(
         'SamplerEngine: recording stopped for tile', tileIndex,
-        '— duration:', audioBuffer.duration.toFixed(2) + 's',
-        '— samples:', pcmData.length
+        '— duration:', audioBuffer.duration.toFixed(2) + 's'
       );
 
       this.recordingChunks = [];
@@ -221,13 +210,14 @@ export class SamplerEngine {
 
   // ── Playback ──────────────────────────────────────────────────────────────
 
+  // Returns the buffer duration in seconds, or 0 if no sample
   playTile(tileIndex, options) {
     var loop = options && options.loop ? options.loop : false;
     var tile = this.tiles[tileIndex];
 
     if (!tile || tile.status !== 'ready' || !tile.buffer) {
       console.warn('SamplerEngine: tile', tileIndex, 'has no sample');
-      return;
+      return 0;
     }
 
     this.stopTile(tileIndex);
@@ -236,11 +226,8 @@ export class SamplerEngine {
       this.audioContext.resume();
     }
 
-    console.log('context state at playback:', this.audioContext.state);
-
     var source = this.audioContext.createBufferSource();
     source.buffer = tile.buffer;
-    console.log('source.buffer duration:', source.buffer.duration, 'length:', source.buffer.length);
     source.loop = loop;
     var gainNode = this.audioContext.createGain();
     gainNode.gain.value = 1.0;
@@ -257,7 +244,8 @@ export class SamplerEngine {
       }
     };
 
-    console.log('SamplerEngine: playing tile', tileIndex, loop ? '(looping)' : '(one-shot)');
+    console.log('SamplerEngine: playing tile', tileIndex, '— duration:', tile.buffer.duration.toFixed(2) + 's');
+    return tile.buffer.duration;
   }
 
   stopTile(tileIndex) {
@@ -289,7 +277,6 @@ export class SamplerEngine {
     });
     this.activeSources.clear();
 
-    // Stop capturing but keep the mic pipeline alive
     this.isCapturing = false;
     if (this.recordingTileIndex !== null) {
       this.tiles[this.recordingTileIndex].status = 'empty';

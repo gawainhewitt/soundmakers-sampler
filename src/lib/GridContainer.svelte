@@ -3,8 +3,6 @@
   import Square from './Square.svelte';
 
   export let samplerEngine;
-
-  // tileStatuses is bound from App.svelte so it survives navigation
   export let tileStatuses = Array(8).fill('empty');
 
   // ── Keezy colour palette ──────────────────────────────────────────────────
@@ -23,9 +21,35 @@
   const NUM_TILES = 8;
   let orientation = 'portrait';
 
+  // Playing state per tile: { playing: bool, duration: number }
+  let tilePlayStates = Array.from({ length: NUM_TILES }, function() {
+    return { playing: false, duration: 0 };
+  });
+
+  // Timers to reset playing state after sample finishes
+  let playTimers = Array(NUM_TILES).fill(null);
+
   function updateTileStatus(index, status) {
     tileStatuses[index] = status;
     tileStatuses = [...tileStatuses];
+  }
+
+  function setPlaying(index, duration) {
+    // Clear any existing timer for this tile
+    if (playTimers[index]) {
+      clearTimeout(playTimers[index]);
+      playTimers[index] = null;
+    }
+
+    tilePlayStates[index] = { playing: true, duration: duration };
+    tilePlayStates = [...tilePlayStates];
+
+    // Reset after sample finishes
+    playTimers[index] = setTimeout(function() {
+      tilePlayStates[index] = { playing: false, duration: 0 };
+      tilePlayStates = [...tilePlayStates];
+      playTimers[index] = null;
+    }, duration * 1000);
   }
 
   async function handleTileTap(index) {
@@ -42,7 +66,8 @@
       updateTileStatus(index, 'ready');
 
     } else if (status === 'ready') {
-      samplerEngine.playTile(index, { loop: false });
+      const duration = samplerEngine.playTile(index, { loop: false });
+      if (duration) setPlaying(index, duration);
     }
   }
 
@@ -69,7 +94,7 @@
     window.removeEventListener('resize', updateOrientation);
     document.removeEventListener('visibilitychange', handleVisibilityChange);
     window.removeEventListener('blur', handleWindowBlur);
-    // No panic() here — GridContainer is now always mounted
+    playTimers.forEach(function(t) { if (t) clearTimeout(t); });
   });
 </script>
 
@@ -79,6 +104,8 @@
       {index}
       color={SQUARE_COLORS[index]}
       status={tileStatuses[index]}
+      playing={tilePlayStates[index].playing}
+      playDuration={tilePlayStates[index].duration}
       on:tap={() => handleTileTap(index)}
     />
   {/each}
