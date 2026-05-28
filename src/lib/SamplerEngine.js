@@ -1,26 +1,25 @@
 // SamplerEngine.js
 // Web Audio API sampler — no dependencies, iOS 12 compatible
-// Uses ScriptProcessorNode for recording, WAV encoding + decodeAudioData for playback buffers
+// ScriptProcessorNode and micSource are created once and reused across recordings
 
 export class SamplerEngine {
   constructor() {
     this.audioContext = null;
     this.initialized = false;
 
-    // Per-tile state
-    // Each entry: { status: 'empty'|'recording'|'ready', buffer: AudioBuffer|null }
     this.tiles = Array.from({ length: 8 }, function() {
       return { status: 'empty', buffer: null };
     });
 
-    // Active playback sources
-    // Key: tileIndex, Value: AudioBufferSourceNode
     this.activeSources = new Map();
 
-    // Recording state
+    // Mic infrastructure — created once, reused
     this.micStream = null;
     this.micSource = null;
     this.scriptProcessor = null;
+    this.isCapturing = false;
+
+    // Recording state
     this.recordingTileIndex = null;
     this.recordingChunks = [];
     this.recordingSampleRate = null;
@@ -47,9 +46,11 @@ export class SamplerEngine {
     }
   }
 
-  // ── Microphone access ─────────────────────────────────────────────────────
+  // ── Microphone setup — called once ───────────────────────────────────────
 
-  async requestMicAccess() {
+  async setupMic() {
+    if (this.micStream) return true; // already set up
+
     try {
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         this.micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
@@ -60,8 +61,34 @@ export class SamplerEngine {
       } else {
         throw new Error('getUserMedia not supported');
       }
+
       console.log('SamplerEngine: microphone access granted');
+
+      // Resume context — iOS 12 needs this
+      if (this.audioContext.state === 'suspended') {
+        await this.audioContext.resume();
+      }
+
+      // Create mic source and script processor once
+      this.micSource = this.audioContext.createMediaStreamSource(this.micStream);
+      this.scriptProcessor = this.audioContext.createScriptProcessor(4096, 1, 1);
+
+      var self = this;
+      this.scriptProcessor.onaudioprocess = function(e) {
+        if (!self.isCapturing) return;
+        var input = e.inputBuffer.getChannelData(0);
+        var chunk = new Float32Array(input.length);
+        chunk.set(input);
+        self.recordingChunks.push(chunk);
+      };
+
+      // Connect permanently — stays connected for the lifetime of the engine
+      this.micSource.connect(this.scriptProcessor);
+      this.scriptProcessor.connect(this.audioContext.destination);
+
+      console.log('SamplerEngine: mic pipeline established');
       return true;
+
     } catch (error) {
       console.error('SamplerEngine: microphone access denied:', error);
       return false;
@@ -76,49 +103,23 @@ export class SamplerEngine {
       return false;
     }
 
+    // Stop any existing recording first
     if (this.recordingTileIndex !== null) {
       await this.stopRecording(this.recordingTileIndex);
     }
 
-    if (!this.micStream) {
-      var granted = await this.requestMicAccess();
-      if (!granted) return false;
-    }
+    // Set up mic pipeline if not done yet
+    var ready = await this.setupMic();
+    if (!ready) return false;
 
-    try {
-      if (this.audioContext.state === 'suspended') {
-        await this.audioContext.resume();
-      }
+    this.recordingChunks = [];
+    this.recordingTileIndex = tileIndex;
+    this.recordingSampleRate = this.audioContext.sampleRate;
+    this.tiles[tileIndex].status = 'recording';
+    this.isCapturing = true;
 
-      this.recordingChunks = [];
-      this.recordingTileIndex = tileIndex;
-      this.recordingSampleRate = this.audioContext.sampleRate;
-      this.tiles[tileIndex].status = 'recording';
-
-      this.micSource = this.audioContext.createMediaStreamSource(this.micStream);
-      this.scriptProcessor = this.audioContext.createScriptProcessor(4096, 1, 1);
-
-      var self = this;
-      this.scriptProcessor.onaudioprocess = function(e) {
-        if (self.recordingTileIndex === tileIndex) {
-          var input = e.inputBuffer.getChannelData(0);
-          var chunk = new Float32Array(input.length);
-          chunk.set(input);
-          self.recordingChunks.push(chunk);
-        }
-      };
-
-      this.micSource.connect(this.scriptProcessor);
-      this.scriptProcessor.connect(this.audioContext.destination);
-
-      console.log('SamplerEngine: recording started for tile', tileIndex);
-      return true;
-    } catch (error) {
-      console.error('SamplerEngine: failed to start recording:', error);
-      this.tiles[tileIndex].status = 'empty';
-      this.recordingTileIndex = null;
-      return false;
-    }
+    console.log('SamplerEngine: recording started for tile', tileIndex);
+    return true;
   }
 
   async stopRecording(tileIndex) {
@@ -127,17 +128,11 @@ export class SamplerEngine {
       return false;
     }
 
-    try {
-      if (this.scriptProcessor) {
-        this.scriptProcessor.disconnect();
-        this.scriptProcessor.onaudioprocess = null;
-        this.scriptProcessor = null;
-      }
-      if (this.micSource) {
-        this.micSource.disconnect();
-        this.micSource = null;
-      }
+    // Stop capturing immediately
+    this.isCapturing = false;
+    this.recordingTileIndex = null;
 
+    try {
       // Assemble PCM chunks
       var totalLength = this.recordingChunks.reduce(function(acc, chunk) {
         return acc + chunk.length;
@@ -150,10 +145,9 @@ export class SamplerEngine {
         offset += this.recordingChunks[i].length;
       }
 
-      // Encode to WAV and decode via decodeAudioData
-      // This code path is more reliable on iOS 12 than createBuffer + set()
       console.log('pcmData first 5 samples:', pcmData[0], pcmData[1], pcmData[2], pcmData[3], pcmData[4]);
 
+      // Encode to WAV and decode via decodeAudioData
       var wavBuffer = this._encodeWAV(pcmData, this.recordingSampleRate);
       var self = this;
 
@@ -164,8 +158,6 @@ export class SamplerEngine {
       this.tiles[tileIndex].buffer = audioBuffer;
       this.tiles[tileIndex].status = 'ready';
 
-      console.log('tile', tileIndex, 'buffer stored, duration:', this.tiles[tileIndex].buffer.duration, 'status:', this.tiles[tileIndex].status);
-
       console.log(
         'SamplerEngine: recording stopped for tile', tileIndex,
         '— duration:', audioBuffer.duration.toFixed(2) + 's',
@@ -173,21 +165,17 @@ export class SamplerEngine {
       );
 
       this.recordingChunks = [];
-      this.recordingTileIndex = null;
       return true;
 
     } catch (error) {
       console.error('SamplerEngine: failed to stop recording:', error);
       this.tiles[tileIndex].status = 'empty';
       this.recordingChunks = [];
-      this.recordingTileIndex = null;
       return false;
     }
   }
 
   // ── WAV encoding ──────────────────────────────────────────────────────────
-  // Encodes mono Float32Array PCM into a 16-bit WAV ArrayBuffer
-  // iOS 12 decodeAudioData handles this reliably
 
   _encodeWAV(pcmFloat32, sampleRate) {
     var numChannels = 1;
@@ -201,13 +189,12 @@ export class SamplerEngine {
     var buffer = new ArrayBuffer(bufferLength);
     var view = new DataView(buffer);
 
-    // WAV header
     this._writeString(view, 0, 'RIFF');
     view.setUint32(4, 36 + dataLength, true);
     this._writeString(view, 8, 'WAVE');
     this._writeString(view, 12, 'fmt ');
-    view.setUint32(16, 16, true);           // PCM chunk size
-    view.setUint16(20, 1, true);            // PCM format
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
     view.setUint16(22, numChannels, true);
     view.setUint32(24, sampleRate, true);
     view.setUint32(28, byteRate, true);
@@ -216,7 +203,6 @@ export class SamplerEngine {
     this._writeString(view, 36, 'data');
     view.setUint32(40, dataLength, true);
 
-    // Convert Float32 samples to Int16
     var dataOffset = 44;
     for (var i = 0; i < pcmFloat32.length; i++) {
       var s = Math.max(-1, Math.min(1, pcmFloat32[i]));
@@ -303,15 +289,8 @@ export class SamplerEngine {
     });
     this.activeSources.clear();
 
-    if (this.scriptProcessor) {
-      this.scriptProcessor.disconnect();
-      this.scriptProcessor.onaudioprocess = null;
-      this.scriptProcessor = null;
-    }
-    if (this.micSource) {
-      this.micSource.disconnect();
-      this.micSource = null;
-    }
+    // Stop capturing but keep the mic pipeline alive
+    this.isCapturing = false;
     if (this.recordingTileIndex !== null) {
       this.tiles[this.recordingTileIndex].status = 'empty';
       this.recordingTileIndex = null;
