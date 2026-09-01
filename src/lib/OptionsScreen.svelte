@@ -10,8 +10,11 @@
   const TILE_COUNT_OPTIONS = [1, 2, 4, 6, 8];
   let selectedCount = tileCount;
 
-  // Tiles the user has marked to clear in this session
+  // Tiles the user has marked to clear in this session (working copy)
   let clearedTiles = new Set();
+
+  // Index of the tile whose editor is open, or null when closed
+  let selectedTile = null;
 
   let orientation = 'portrait';
   function updateOrientation() {
@@ -22,11 +25,52 @@
   $: columns = grid.cols;
   $: rows = grid.rows;
 
+  $: editorStatus = selectedTile !== null
+    ? (clearedTiles.has(selectedTile) ? 'empty' : (tileStatuses[selectedTile] || 'empty'))
+    : null;
+
+  // Grid size in px, measured so the whole column fits the viewport in both
+  // orientations (title + tile count + grid + Done all visible).
+  let gridSize = 0;
+
+  function measureGrid() {
+    const screen = document.querySelector('.options-screen');
+    const gridEl = document.querySelector('.tile-grid');
+    if (!screen || !gridEl) return;
+
+    const title = screen.querySelector('h1');
+    const countSetting = screen.querySelector('.setting--count');
+    const tilesLabel = screen.querySelector('.setting--grow .setting-label');
+    const done = screen.querySelector('.close-button');
+
+    const fixedH =
+      (title ? title.getBoundingClientRect().height : 0) +
+      (countSetting ? countSetting.getBoundingClientRect().height : 0) +
+      (tilesLabel ? tilesLabel.getBoundingClientRect().height : 0) +
+      (done ? done.getBoundingClientRect().height : 0);
+
+    // 3 gaps of 1rem + 2rem top/bottom padding
+    const gapTotal = 3 * 16;
+    const paddingTotal = 4 * 16;
+
+    const availH = screen.clientHeight - fixedH - gapTotal - paddingTotal;
+    const maxByWidth = window.innerWidth * 0.8;
+    gridSize = Math.max(0, Math.min(availH, maxByWidth));
+  }
+
   function selectCount(count) {
     selectedCount = count;
     // Drop clear marks for tiles that no longer exist
     clearedTiles.forEach((i) => { if (i >= count) clearedTiles.delete(i); });
     clearedTiles = new Set(clearedTiles);
+  }
+
+  function openEditor(index) {
+    selectedTile = index;
+  }
+
+  function closeEditor() {
+    selectedTile = null;
   }
 
   function toggleClear(index) {
@@ -43,17 +87,23 @@
   }
 
   function handleKeydown(e) {
-    if (e.key === 'Enter' || e.key === 'Escape') handleClose();
+    if (e.key === 'Enter' || e.key === 'Escape') {
+      if (selectedTile !== null) closeEditor();
+      else handleClose();
+    }
   }
 
   onMount(() => {
     updateOrientation();
-    window.addEventListener('resize', updateOrientation);
+    measureGrid();
+    window.addEventListener('resize', () => { updateOrientation(); measureGrid(); });
+    window.addEventListener('orientationchange', () => { updateOrientation(); measureGrid(); });
     window.addEventListener('keydown', handleKeydown);
   });
 
   onDestroy(() => {
-    window.removeEventListener('resize', updateOrientation);
+    window.removeEventListener('resize', () => { updateOrientation(); measureGrid(); });
+    window.removeEventListener('orientationchange', () => { updateOrientation(); measureGrid(); });
     window.removeEventListener('keydown', handleKeydown);
   });
 </script>
@@ -61,7 +111,7 @@
 <div class="options-screen">
   <h1>Settings</h1>
 
-  <div class="setting">
+  <div class="setting setting--count">
     <label class="setting-label">Number of tiles</label>
     <div class="tile-count-options">
       {#each TILE_COUNT_OPTIONS as count}
@@ -77,35 +127,62 @@
     </div>
   </div>
 
-  <div class="setting">
-    <label class="setting-label">Tiles — tap a tile to clear its recording</label>
-    <div
-      class="tile-grid {orientation}"
-      style="grid-template-columns: repeat({columns}, 1fr); grid-template-rows: repeat({rows}, 1fr);"
-    >
-      {#each Array(selectedCount) as _, index}
-        {@const isCleared = clearedTiles.has(index)}
-        {@const status = isCleared ? 'empty' : (tileStatuses[index] || 'empty')}
-        <button
-          class="tile"
-          class:cleared={isCleared}
-          style="background-color: {status === 'empty' ? '#1a1a1a' : SQUARE_COLORS[index % SQUARE_COLORS.length]};"
-          on:click={() => toggleClear(index)}
-          type="button"
-          aria-label="Tile {index + 1}"
-        >
-          {#if isCleared}
-            <span class="tile-label">Restore</span>
-          {:else if status === 'ready'}
-            <span class="tile-label">Clear</span>
-          {/if}
-        </button>
-      {/each}
+  <div class="setting setting--grow">
+    <label class="setting-label">Tiles — tap a tile to edit it</label>
+    <div class="grid-area">
+      <div
+        class="tile-grid {orientation}"
+        style="width: {gridSize}px; height: {gridSize}px; grid-template-columns: repeat({columns}, 1fr); grid-template-rows: repeat({rows}, 1fr);"
+      >
+        {#each Array(selectedCount) as _, index}
+          {@const isCleared = clearedTiles.has(index)}
+          {@const status = isCleared ? 'empty' : (tileStatuses[index] || 'empty')}
+          <button
+            class="tile"
+            class:cleared={isCleared}
+            style="background-color: {status === 'empty' ? '#1a1a1a' : SQUARE_COLORS[index % SQUARE_COLORS.length]};"
+            on:click={() => openEditor(index)}
+            type="button"
+            aria-label="Tile {index + 1}"
+          >
+            {#if isCleared}
+              <span class="tile-label">Cleared</span>
+            {:else if status === 'ready'}
+              <span class="tile-label">Edit</span>
+            {/if}
+          </button>
+        {/each}
+      </div>
     </div>
   </div>
 
   <button class="close-button" on:click={handleClose}>Done</button>
 </div>
+
+{#if selectedTile !== null}
+  <div class="editor-panel">
+    <h2>Tile {selectedTile + 1}</h2>
+
+    <div
+      class="editor-tile-preview"
+      style="background-color: {editorStatus === 'empty' ? '#1a1a1a' : SQUARE_COLORS[selectedTile % SQUARE_COLORS.length]};"
+    ></div>
+
+    {#if editorStatus === 'ready'}
+      <button class="action-button danger" on:click={() => toggleClear(selectedTile)} type="button">
+        Clear recording
+      </button>
+    {:else if clearedTiles.has(selectedTile)}
+      <button class="action-button" on:click={() => toggleClear(selectedTile)} type="button">
+        Restore recording
+      </button>
+    {:else}
+      <p class="no-recording">No recording on this tile.</p>
+    {/if}
+
+    <button class="action-button" on:click={closeEditor} type="button">Back</button>
+  </div>
+{/if}
 
 <style>
   .options-screen {
@@ -118,10 +195,22 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    gap: 1.5rem;
+    justify-content: flex-start;
+    gap: 1rem;
+    padding: 2rem;
+    box-sizing: border-box;
     z-index: 9999;
     overflow: auto;
+  }
+
+  /* Match the splash screen: in landscape, keep the layout portrait-like and
+     centred within a strict space so nothing is pushed off-screen. */
+  @media (orientation: landscape) {
+    .options-screen {
+      max-width: 100vh;
+      left: 50%;
+      transform: translateX(-50%);
+    }
   }
 
   h1 {
@@ -171,11 +260,15 @@
     color: white;
   }
 
+  .grid-area {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
   .tile-grid {
     display: grid;
     gap: 4px;
-    width: min(80vw, 55vh);
-    height: min(80vw, 55vh);
   }
 
   .tile {
@@ -212,5 +305,57 @@
     font-weight: 600;
     border-radius: 50px;
     cursor: pointer;
+  }
+
+  .editor-panel {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: white;
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1.5rem;
+    padding: 2rem;
+    box-sizing: border-box;
+  }
+
+  .editor-panel h2 {
+    font-size: 2rem;
+    color: #333;
+    margin: 0;
+  }
+
+  .editor-tile-preview {
+    width: 40vw;
+    height: 40vw;
+    max-width: 220px;
+    max-height: 220px;
+    border-radius: 12px;
+  }
+
+  .action-button {
+    background-color: #06C0F0;
+    color: white;
+    border: none;
+    padding: 1rem 2.5rem;
+    font-size: 1.1rem;
+    font-weight: 600;
+    border-radius: 50px;
+    cursor: pointer;
+  }
+
+  .action-button.danger {
+    background-color: #e74c3c;
+  }
+
+  .no-recording {
+    font-size: 1.1rem;
+    color: #999;
+    margin: 0;
   }
 </style>
