@@ -2,9 +2,15 @@ import { mount } from 'svelte'
 import './app.css'
 import App from './App.svelte'
 
-// Prevent all scrolling on iOS
+// Prevent all scrolling on iOS, while letting touch-draggable controls (such
+// as range sliders) still receive touchmove events.
 document.addEventListener('touchmove', function(e) {
-  e.preventDefault();
+  const el = e.target instanceof Element ? e.target : null;
+  const tag = el ? el.tagName.toLowerCase() : '';
+  const isControl = tag === 'input' || tag === 'select' || tag === 'textarea';
+  if (!isControl) {
+    e.preventDefault();
+  }
 }, { passive: false });
 
 const app = mount(App, {

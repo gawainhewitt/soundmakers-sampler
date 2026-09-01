@@ -8,7 +8,7 @@ export class SamplerEngine {
     this.initialized = false;
 
     this.tiles = Array.from({ length: tileCount || 4 }, function() {
-      return { status: 'empty', buffer: null, trimStart: 0, trimEnd: 0 };
+      return { status: 'empty', buffer: null, trimStart: 0, trimEnd: 0, speed: 1 };
     });
 
     this.activeSources = new Map();
@@ -149,6 +149,7 @@ export class SamplerEngine {
       this.tiles[tileIndex].status = 'ready';
       this.tiles[tileIndex].trimStart = 0;
       this.tiles[tileIndex].trimEnd = audioBuffer.duration;
+      this.tiles[tileIndex].speed = 1;
 
       console.log(
         'SamplerEngine: recording stopped for tile', tileIndex,
@@ -236,6 +237,10 @@ export class SamplerEngine {
     source.connect(gainNode);
     gainNode.connect(this.audioContext.destination);
 
+    // Playback speed effect (playbackRate; also shifts pitch)
+    var speed = (typeof tile.speed === 'number' && tile.speed > 0) ? tile.speed : 1;
+    source.playbackRate.value = speed;
+
     // Honour any trim points (default to the full buffer)
     var start = (typeof tile.trimStart === 'number') ? tile.trimStart : 0;
     var end = (typeof tile.trimEnd === 'number' && tile.trimEnd > 0)
@@ -253,8 +258,23 @@ export class SamplerEngine {
       }
     };
 
-    console.log('SamplerEngine: playing tile', tileIndex, '— duration:', dur.toFixed(2) + 's');
-    return dur;
+    // Audible duration (seconds) accounts for the speed change
+    var audible = dur / speed;
+    console.log('SamplerEngine: playing tile', tileIndex, '— duration:', audible.toFixed(2) + 's', 'speed:', speed.toFixed(2));
+    return audible;
+  }
+
+  setSpeed(tileIndex, speed) {
+    var tile = this.tiles[tileIndex];
+    if (!tile || !tile.buffer) return false;
+    tile.speed = Math.max(0.25, Math.min(4, speed));
+    console.log('SamplerEngine: tile', tileIndex, 'speed →', tile.speed.toFixed(2));
+    return true;
+  }
+
+  getSpeed(tileIndex) {
+    var tile = this.tiles[tileIndex];
+    return tile ? tile.speed || 1 : 1;
   }
 
   setTrim(tileIndex, start, end) {
@@ -281,6 +301,9 @@ export class SamplerEngine {
     this.stopTile(tileIndex);
     this.tiles[tileIndex].buffer = null;
     this.tiles[tileIndex].status = 'empty';
+    this.tiles[tileIndex].trimStart = 0;
+    this.tiles[tileIndex].trimEnd = 0;
+    this.tiles[tileIndex].speed = 1;
     console.log('SamplerEngine: cleared tile', tileIndex);
   }
 
@@ -303,7 +326,7 @@ export class SamplerEngine {
   setTileCount(count) {
     var self = this;
     var newTiles = Array.from({ length: count }, function(_, i) {
-      return self.tiles[i] || { status: 'empty', buffer: null, trimStart: 0, trimEnd: 0 };
+      return self.tiles[i] || { status: 'empty', buffer: null, trimStart: 0, trimEnd: 0, speed: 1 };
     });
 
     // Stop any playback/recording that falls outside the new range

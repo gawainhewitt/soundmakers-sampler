@@ -9,9 +9,11 @@
   export let tileStatuses = Array(4).fill('empty');
   export let getTileBuffer = () => null;
   export let getTrim = () => [0, 0];
+  export let getSpeed = () => 1;
   export let playTile = () => 0;
   export let stopTile = () => null;
   export let setTrim = () => false;
+  export let setSpeed = () => false;
 
   const TILE_COUNT_OPTIONS = [1, 2, 4, 6, 8];
   let selectedCount = tileCount;
@@ -61,9 +63,9 @@
       }
     }
 
-    // gaps between children (4 children visible when recording: h2, preview,
-    // waveform, clear, back -> 4 gaps of 1.5rem)
-    const gapTotal = 24 * 4;
+    // gaps between children, based on the number actually visible
+    const childCount = Array.from(panel.children).length;
+    const gapTotal = 24 * Math.max(0, childCount - 1);
 
     const availH = window.innerHeight - fixedH - gapTotal;
     waveformHeight = Math.min(240, Math.max(80, availH));
@@ -136,6 +138,19 @@
     }
   }
 
+  // ── Editor speed effect ───────────────────────────────────────────────────
+  let speed = 1;
+
+  function initSpeed() {
+    if (selectedTile === null) return;
+    speed = getSpeed(selectedTile);
+  }
+
+  function handleSpeedInput() {
+    if (selectedTile === null) return;
+    setSpeed(selectedTile, speed);
+  }
+
   // Grid size in px, measured so the whole column fits the viewport in both
   // orientations (title + tile count + grid + Done all visible).
   let gridSize = 0;
@@ -175,7 +190,7 @@
   function openEditor(index) {
     selectedTile = index;
     // measure after the panel has rendered
-    requestAnimationFrame(() => { measureEditor(); initTrim(); });
+    requestAnimationFrame(() => { measureEditor(); initTrim(); initSpeed(); });
   }
 
   function closeEditor() {
@@ -294,6 +309,20 @@
         <button class="action-button" on:click={togglePlay} type="button">
           {isPlaying ? 'Stop' : 'Play'}
         </button>
+      </div>
+
+      <div class="effect-control">
+        <label class="effect-label" for="speed-slider">Speed: <strong>{speed.toFixed(2)}×</strong></label>
+        <input
+          id="speed-slider"
+          type="range"
+          min="0.25"
+          max="2"
+          step="0.05"
+          bind:value={speed}
+          on:input={handleSpeedInput}
+          on:change={handleSpeedInput}
+        />
       </div>
 
       <button class="action-button danger" on:click={() => toggleClear(selectedTile)} type="button">
@@ -487,6 +516,25 @@
 
   .action-button.danger {
     background-color: #e74c3c;
+  }
+
+  .effect-control {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    max-width: 300px;
+  }
+
+  .effect-label {
+    font-size: 1rem;
+    color: #555;
+  }
+
+  .effect-control input[type="range"] {
+    width: 100%;
+    accent-color: #06C0F0;
   }
 
   .no-recording {
