@@ -3,11 +3,11 @@
 // ScriptProcessorNode and micSource are created once and reused across recordings
 
 export class SamplerEngine {
-  constructor() {
+  constructor(tileCount) {
     this.audioContext = null;
     this.initialized = false;
 
-    this.tiles = Array.from({ length: 8 }, function() {
+    this.tiles = Array.from({ length: tileCount || 4 }, function() {
       return { status: 'empty', buffer: null };
     });
 
@@ -267,6 +267,31 @@ export class SamplerEngine {
 
   getTileStatus(tileIndex) {
     return this.tiles[tileIndex] ? this.tiles[tileIndex].status : 'empty';
+  }
+
+  // Resize the number of tiles, preserving any existing recordings
+  setTileCount(count) {
+    var self = this;
+    var newTiles = Array.from({ length: count }, function(_, i) {
+      return self.tiles[i] || { status: 'empty', buffer: null };
+    });
+
+    // Stop any playback/recording that falls outside the new range
+    self.activeSources.forEach(function(source, idx) {
+      if (idx >= count) {
+        try { source.stop(0); } catch (e) { /* ignore */ }
+        self.activeSources.delete(idx);
+      }
+    });
+
+    if (self.recordingTileIndex !== null && self.recordingTileIndex >= count) {
+      self.isCapturing = false;
+      self.recordingTileIndex = null;
+      self.recordingChunks = [];
+    }
+
+    self.tiles = newTiles;
+    console.log('SamplerEngine: tile count set to', count);
   }
 
   // ── Panic ─────────────────────────────────────────────────────────────────

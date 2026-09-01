@@ -3,8 +3,17 @@
 
   const dispatch = createEventDispatcher();
 
+  export let tileCount = 4;
+
+  const TILE_COUNT_OPTIONS = [1, 2, 4, 6, 8];
+  let selectedCount = tileCount;
+
+  function selectCount(count) {
+    selectedCount = count;
+  }
+
   function handleClose() {
-    dispatch('save');
+    dispatch('save', { tileCount: selectedCount });
   }
 
   function handleKeydown(e) {
@@ -17,8 +26,24 @@
 
 <div class="options-screen">
   <h1>Settings</h1>
-  <p>Coming soon</p>
-  <button class="close-button" on:click={handleClose}>Close</button>
+
+  <div class="setting">
+    <label class="setting-label">Number of tiles</label>
+    <div class="tile-count-options">
+      {#each TILE_COUNT_OPTIONS as count}
+        <button
+          class="tile-count-option"
+          class:selected={count === selectedCount}
+          on:click={() => selectCount(count)}
+          type="button"
+        >
+          {count}
+        </button>
+      {/each}
+    </div>
+  </div>
+
+  <button class="close-button" on:click={handleClose}>Done</button>
 </div>
 
 <style>
@@ -43,10 +68,44 @@
     margin: 0;
   }
 
-  p {
+  .setting {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .setting-label {
     font-size: 1.2rem;
-    color: #999;
-    margin: 0;
+    color: #555;
+  }
+
+  .tile-count-options {
+    display: flex;
+    gap: 1rem;
+  }
+
+  .tile-count-option {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    border: 2px solid #ddd;
+    background-color: white;
+    color: #333;
+    font-size: 1.4rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .tile-count-option:hover {
+    border-color: #06C0F0;
+  }
+
+  .tile-count-option.selected {
+    background-color: #06C0F0;
+    border-color: #06C0F0;
+    color: white;
   }
 
   .close-button {

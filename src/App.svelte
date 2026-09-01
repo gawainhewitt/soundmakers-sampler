@@ -11,12 +11,19 @@
   let samplerEngine = null;
   let audioInitialized = false;
 
+  // Number of tiles — configurable in settings, persisted locally
+  let tileCount = 4;
+  if (typeof localStorage !== 'undefined') {
+    const saved = parseInt(localStorage.getItem('tileCount'), 10);
+    if (saved && saved > 0) tileCount = saved;
+  }
+
   // Tile statuses live here so they survive screen changes
   // 'empty' | 'recording' | 'ready'
-  let tileStatuses = Array(8).fill('empty');
+  let tileStatuses = Array(tileCount).fill('empty');
 
   onMount(() => {
-    samplerEngine = new SamplerEngine();
+    samplerEngine = new SamplerEngine(tileCount);
   });
 
   async function handleSplashClick() {
@@ -59,7 +66,22 @@
     }, 100);
   }
 
+  function resizeTileStatuses(count) {
+    const next = Array.from({ length: count }, (_, i) => tileStatuses[i] || 'empty');
+    tileStatuses = next;
+  }
+
   function handleOptionsSave(event) {
+    const detail = event.detail || {};
+    if (detail.tileCount && detail.tileCount !== tileCount) {
+      tileCount = detail.tileCount;
+      resizeTileStatuses(tileCount);
+      if (samplerEngine) samplerEngine.setTileCount(tileCount);
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('tileCount', String(tileCount));
+      }
+    }
+
     document.body.style.setProperty('background-color', '#000', 'important');
     currentScreen = 'play';
     setTimeout(() => {
@@ -86,7 +108,7 @@
     on:click={handleAboutClose}
   />
 {:else if currentScreen === 'options'}
-  <OptionsScreen on:save={handleOptionsSave} />
+  <OptionsScreen {tileCount} on:save={handleOptionsSave} />
 {/if}
 
 <!-- Keep GridContainer always mounted so tileStatuses and samplerEngine state are preserved -->
@@ -100,7 +122,7 @@
 
   <main>
     <ResponsiveContainer>
-      <GridContainer {samplerEngine} bind:tileStatuses />
+      <GridContainer {samplerEngine} {tileCount} bind:tileStatuses />
     </ResponsiveContainer>
   </main>
 </div>

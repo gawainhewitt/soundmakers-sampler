@@ -3,7 +3,8 @@
   import Square from './Square.svelte';
 
   export let samplerEngine;
-  export let tileStatuses = Array(8).fill('empty');
+  export let tileCount = 4;
+  export let tileStatuses = Array(4).fill('empty');
 
   // ── Keezy colour palette ──────────────────────────────────────────────────
   const SQUARE_COLORS = [
@@ -18,16 +19,52 @@
   ];
   // ─────────────────────────────────────────────────────────────────────────
 
-  const NUM_TILES = 8;
   let orientation = 'portrait';
 
   // Playing state per tile: { playing: bool, duration: number }
-  let tilePlayStates = Array.from({ length: NUM_TILES }, function() {
+  let tilePlayStates = Array.from({ length: tileCount }, function() {
     return { playing: false, duration: 0 };
   });
 
   // Timers to reset playing state after sample finishes
-  let playTimers = Array(NUM_TILES).fill(null);
+  let playTimers = Array(tileCount).fill(null);
+
+  // Keep internal play state in sync when the tile count changes
+  $: if (tileCount !== tilePlayStates.length) {
+    for (let i = tileCount; i < playTimers.length; i++) {
+      if (playTimers[i]) clearTimeout(playTimers[i]);
+    }
+    tilePlayStates = Array.from({ length: tileCount }, (_, i) =>
+      tilePlayStates[i] || { playing: false, duration: 0 }
+    );
+    playTimers = Array.from({ length: tileCount }, (_, i) => playTimers[i] || null);
+  }
+
+  // Grid dimensions depend on orientation and tile count.
+  // Layouts are chosen so tiles fill the whole grid (no empty cells),
+  // keeping them as large as possible and centred.
+  const GRID_LAYOUTS = {
+    portrait: { 1: [1, 1], 2: [1, 2], 4: [2, 2], 6: [2, 3], 8: [2, 4] },
+    landscape: { 1: [1, 1], 2: [2, 1], 4: [2, 2], 6: [3, 2], 8: [4, 2] },
+  };
+
+  function computeGrid(count, orient) {
+    const layout = GRID_LAYOUTS[orient] && GRID_LAYOUTS[orient][count];
+    if (layout) return { cols: layout[0], rows: layout[1] };
+    // Fallback for any other count: fill the grid with as few cells as possible
+    let cols = Math.ceil(Math.sqrt(count));
+    let rows = Math.ceil(count / cols);
+    if (orient === 'portrait' && cols > rows) [cols, rows] = [rows, cols];
+    while (cols * rows < count) {
+      if (orient === 'portrait') rows++;
+      else cols++;
+    }
+    return { cols, rows };
+  }
+
+  $: grid = computeGrid(tileCount, orientation);
+  $: columns = grid.cols;
+  $: rows = grid.rows;
 
   function updateTileStatus(index, status) {
     tileStatuses[index] = status;
@@ -58,13 +95,6 @@
     const status = tileStatuses[index];
 
     if (status === 'empty') {
-      // Auto-stop any tile that is currently recording before starting a new one
-      const recordingIndex = tileStatuses.findIndex((s) => s === 'recording');
-      if (recordingIndex !== -1) {
-        await samplerEngine.stopRecording(recordingIndex);
-        updateTileStatus(recordingIndex, 'ready');
-      }
-
       const ok = await samplerEngine.startRecording(index);
       if (ok) updateTileStatus(index, 'recording');
 
@@ -105,11 +135,11 @@
   });
 </script>
 
-<div class="grid {orientation}">
-  {#each Array(NUM_TILES) as _, index}
+<div class="grid {orientation}" style="grid-template-columns: repeat({columns}, 1fr); grid-template-rows: repeat({rows}, 1fr);">
+  {#each Array(tileCount) as _, index}
     <Square
       {index}
-      color={SQUARE_COLORS[index]}
+      color={SQUARE_COLORS[index % SQUARE_COLORS.length]}
       status={tileStatuses[index]}
       playing={tilePlayStates[index].playing}
       playDuration={tilePlayStates[index].duration}
@@ -124,15 +154,5 @@
     width: 100%;
     height: 100%;
     gap: 0;
-  }
-
-  .grid.portrait {
-    grid-template-columns: repeat(2, 1fr);
-    grid-template-rows: repeat(4, 1fr);
-  }
-
-  .grid.landscape {
-    grid-template-columns: repeat(4, 1fr);
-    grid-template-rows: repeat(2, 1fr);
   }
 </style>
