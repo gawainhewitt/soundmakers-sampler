@@ -15,6 +15,28 @@
   let canvasEl;
   let dragging = null; // 'start' | 'end' | null
 
+  // Horizontal inset (px) so trim handles are visible and grabbable even when
+  // they sit at the very start/end of the buffer (the default range).
+  const PAD = 10;
+
+  // Width of the drawable area (between the padding insets)
+  function drawWidth() {
+    return (canvasEl ? canvasEl.clientWidth : 1) - PAD * 2;
+  }
+
+  // Convert a 0..1 ratio into a canvas x pixel (within the padded area)
+  function pxFromRatio(ratio) {
+    return PAD + ratio * drawWidth();
+  }
+
+  // Convert a client X into a 0..1 ratio (ignoring the padding)
+  function ratioFromClientX(clientX) {
+    const rect = canvasEl.getBoundingClientRect();
+    const dw = drawWidth();
+    if (dw <= 0) return 0;
+    return Math.max(0, Math.min(1, (clientX - rect.left - PAD) / dw));
+  }
+
   function draw() {
     const canvas = canvasEl;
     if (!buffer || !canvas) return;
@@ -42,9 +64,9 @@
     const samplesPerBar = Math.floor(data.length / numBars);
     if (samplesPerBar < 1) return;
 
-    // Boundary pixels for the trim region
-    const sx = Math.round(trimStart * w);
-    const ex = Math.round(trimEnd * w);
+    // Boundary pixels for the trim region (inset from the edges)
+    const sx = Math.round(pxFromRatio(trimStart));
+    const ex = Math.round(pxFromRatio(trimEnd));
 
     ctx.fillStyle = color;
 
@@ -80,33 +102,26 @@
     // Playback cursor — swept across the trimmed region so it matches what is heard
     if (cursor >= 0) {
       const pos = trimStart + cursor * (trimEnd - trimStart);
-      const cx = Math.min(w, Math.max(0, pos * w));
+      const cx = Math.min(w, Math.max(0, pxFromRatio(pos)));
       ctx.fillStyle = 'rgba(120,255,120,0.95)';
       ctx.fillRect(cx - 1, 0, 2, h);
     }
   }
 
-  // Convert a client X to a 0..1 position
-  function ratioFromClientX(clientX) {
-    const rect = canvasEl.getBoundingClientRect();
-    if (!rect.width) return 0;
-    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-  }
-
   function handleDown(e) {
     if (!buffer) return;
     const ratio = ratioFromClientX(e.clientX);
-    const px = ratio * canvasEl.clientWidth;
+    const px = e.clientX - canvasEl.getBoundingClientRect().left;
 
-    const sx = trimStart * canvasEl.clientWidth;
-    const ex = trimEnd * canvasEl.clientWidth;
+    const sx = pxFromRatio(trimStart);
+    const ex = pxFromRatio(trimEnd);
 
     // Which handle is closer? Prefer an edge, accounting for touch size.
     const dStart = Math.abs(px - sx);
     const dEnd = Math.abs(px - ex);
     const grab = dStart < dEnd ? 'start' : 'end';
 
-    if (Math.min(dStart, dEnd) < 24) {
+    if (Math.min(dStart, dEnd) < 28) {
       dragging = grab;
       canvasEl.setPointerCapture(e.pointerId);
       e.preventDefault();
