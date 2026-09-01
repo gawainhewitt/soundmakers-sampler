@@ -1,11 +1,13 @@
 <script>
   import { createEventDispatcher, onMount, onDestroy } from 'svelte';
   import { SQUARE_COLORS, computeGrid } from './tileConfig.js';
+  import Waveform from './Waveform.svelte';
 
   const dispatch = createEventDispatcher();
 
   export let tileCount = 4;
   export let tileStatuses = Array(4).fill('empty');
+  export let getTileBuffer = () => null;
 
   const TILE_COUNT_OPTIONS = [1, 2, 4, 6, 8];
   let selectedCount = tileCount;
@@ -27,6 +29,11 @@
 
   $: editorStatus = selectedTile !== null
     ? (clearedTiles.has(selectedTile) ? 'empty' : (tileStatuses[selectedTile] || 'empty'))
+    : null;
+
+  // Audio buffer for the tile currently open in the editor (if it has a recording)
+  $: editorBuffer = (selectedTile !== null && editorStatus === 'ready')
+    ? getTileBuffer(selectedTile)
     : null;
 
   // Grid size in px, measured so the whole column fits the viewport in both
@@ -169,6 +176,10 @@
     ></div>
 
     {#if editorStatus === 'ready'}
+      <div class="waveform-area">
+        <Waveform buffer={editorBuffer} />
+      </div>
+
       <button class="action-button danger" on:click={() => toggleClear(selectedTile)} type="button">
         Clear recording
       </button>
@@ -328,6 +339,16 @@
     font-size: 2rem;
     color: #333;
     margin: 0;
+  }
+
+  /* The waveform fills the flexible middle of the editor panel */
+  .waveform-area {
+    flex: 1;
+    width: 100%;
+    max-width: 600px;
+    background-color: #1a1a1a;
+    border-radius: 12px;
+    overflow: hidden;
   }
 
   .editor-tile-preview {

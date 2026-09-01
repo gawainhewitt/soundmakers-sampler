@@ -269,6 +269,10 @@ export class SamplerEngine {
     return this.tiles[tileIndex] ? this.tiles[tileIndex].status : 'empty';
   }
 
+  getTileBuffer(tileIndex) {
+    return this.tiles[tileIndex] ? this.tiles[tileIndex].buffer : null;
+  }
+
   // Resize the number of tiles, preserving any existing recordings
   setTileCount(count) {
     var self = this;
