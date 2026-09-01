@@ -8,7 +8,7 @@ export class SamplerEngine {
     this.initialized = false;
 
     this.tiles = Array.from({ length: tileCount || 4 }, function() {
-      return { status: 'empty', buffer: null, trimStart: 0, trimEnd: 0, speed: 1 };
+      return { status: 'empty', buffer: null, trimStart: 0, trimEnd: 0, speed: 1, reverse: false };
     });
 
     this.activeSources = new Map();
@@ -150,6 +150,7 @@ export class SamplerEngine {
       this.tiles[tileIndex].trimStart = 0;
       this.tiles[tileIndex].trimEnd = audioBuffer.duration;
       this.tiles[tileIndex].speed = 1;
+      this.tiles[tileIndex].reverse = false;
 
       console.log(
         'SamplerEngine: recording stopped for tile', tileIndex,
@@ -237,9 +238,11 @@ export class SamplerEngine {
     source.connect(gainNode);
     gainNode.connect(this.audioContext.destination);
 
-    // Playback speed effect (playbackRate; also shifts pitch)
+    // Playback speed effect (playbackRate; also shifts pitch). Negative rate
+    // plays in reverse. When reversed, start from the end of the trimmed region.
+    var reverse = !!tile.reverse;
     var speed = (typeof tile.speed === 'number' && tile.speed > 0) ? tile.speed : 1;
-    source.playbackRate.value = speed;
+    source.playbackRate.value = reverse ? -speed : speed;
 
     // Honour any trim points (default to the full buffer)
     var start = (typeof tile.trimStart === 'number') ? tile.trimStart : 0;
@@ -247,7 +250,8 @@ export class SamplerEngine {
       ? tile.trimEnd
       : tile.buffer.duration;
     var dur = Math.max(0.001, end - start);
-    source.start(0, Math.min(start, end), dur);
+    var offset = reverse ? end : start;
+    source.start(0, offset, dur);
 
     var self = this;
     this.activeSources.set(tileIndex, source);
@@ -277,6 +281,19 @@ export class SamplerEngine {
     return tile ? tile.speed || 1 : 1;
   }
 
+  setReverse(tileIndex, reverse) {
+    var tile = this.tiles[tileIndex];
+    if (!tile) return false;
+    tile.reverse = !!reverse;
+    console.log('SamplerEngine: tile', tileIndex, 'reverse →', tile.reverse);
+    return true;
+  }
+
+  getReverse(tileIndex) {
+    var tile = this.tiles[tileIndex];
+    return tile ? !!tile.reverse : false;
+  }
+
   setTrim(tileIndex, start, end) {
     var tile = this.tiles[tileIndex];
     if (!tile || !tile.buffer) return false;
@@ -304,6 +321,7 @@ export class SamplerEngine {
     this.tiles[tileIndex].trimStart = 0;
     this.tiles[tileIndex].trimEnd = 0;
     this.tiles[tileIndex].speed = 1;
+    this.tiles[tileIndex].reverse = false;
     console.log('SamplerEngine: cleared tile', tileIndex);
   }
 
@@ -326,7 +344,7 @@ export class SamplerEngine {
   setTileCount(count) {
     var self = this;
     var newTiles = Array.from({ length: count }, function(_, i) {
-      return self.tiles[i] || { status: 'empty', buffer: null, trimStart: 0, trimEnd: 0, speed: 1 };
+      return self.tiles[i] || { status: 'empty', buffer: null, trimStart: 0, trimEnd: 0, speed: 1, reverse: false };
     });
 
     // Stop any playback/recording that falls outside the new range

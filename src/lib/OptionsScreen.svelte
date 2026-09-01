@@ -10,10 +10,12 @@
   export let getTileBuffer = () => null;
   export let getTrim = () => [0, 0];
   export let getSpeed = () => 1;
+  export let getReverse = () => false;
   export let playTile = () => 0;
   export let stopTile = () => null;
   export let setTrim = () => false;
   export let setSpeed = () => false;
+  export let setReverse = () => false;
 
   const TILE_COUNT_OPTIONS = [1, 2, 4, 6, 8];
   let selectedCount = tileCount;
@@ -140,15 +142,23 @@
 
   // ── Editor speed effect ───────────────────────────────────────────────────
   let speed = 1;
+  let reversed = false;
 
   function initSpeed() {
     if (selectedTile === null) return;
     speed = getSpeed(selectedTile);
+    reversed = getReverse(selectedTile);
   }
 
   function handleSpeedInput() {
     if (selectedTile === null) return;
     setSpeed(selectedTile, speed);
+  }
+
+  function handleReverseToggle() {
+    if (selectedTile === null) return;
+    reversed = !reversed;
+    setReverse(selectedTile, reversed);
   }
 
   // Grid size in px, measured so the whole column fits the viewport in both
@@ -324,6 +334,15 @@
           on:change={handleSpeedInput}
         />
       </div>
+
+      <button
+        class="action-button"
+        class:active={reversed}
+        on:click={handleReverseToggle}
+        type="button"
+      >
+        Reverse {reversed ? 'On' : 'Off'}
+      </button>
 
       <button class="action-button danger" on:click={() => toggleClear(selectedTile)} type="button">
         Clear recording
@@ -516,6 +535,11 @@
 
   .action-button.danger {
     background-color: #e74c3c;
+  }
+
+  .action-button.active {
+    background-color: #FF9130;
+    box-shadow: 0 0 0 3px rgba(255, 145, 48, 0.4);
   }
 
   .effect-control {
