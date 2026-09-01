@@ -23,12 +23,9 @@
   {:else if type === 'settings'}
     <img src="/images/settings-icon.png" alt="" style="width: 24px; height: 24px;" />
   {:else if type === 'load'}
-    <!-- Disk / hard-drive icon (inline SVG so no image asset is needed) -->
+    <!-- Open folder icon (inline SVG so no image asset is needed) -->
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <rect x="3" y="4" width="18" height="14" rx="2" />
-      <circle cx="8" cy="10" r="2" />
-      <line x1="12" y1="10" x2="19" y2="10" />
-      <line x1="12" y1="14" x2="19" y2="14" />
+      <path d="M2 7a2 2 0 0 1 2-2h5l2 2h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7z" />
     </svg>
   {/if}
 
