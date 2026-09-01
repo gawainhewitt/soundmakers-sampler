@@ -14,7 +14,7 @@
   // Number of tiles — configurable in settings, persisted locally
   let tileCount = 4;
   if (typeof localStorage !== 'undefined') {
-    const saved = parseInt(localStorage.getItem('tileCount'), 10);
+    const saved = parseInt(localStorage.getItem('tileCount') || '', 10);
     if (saved && saved > 0) tileCount = saved;
   }
 
@@ -82,6 +82,15 @@
       }
     }
 
+    if (detail.clearedTiles && detail.clearedTiles.length) {
+      detail.clearedTiles.forEach((index) => {
+        if (index >= tileCount) return;
+        if (samplerEngine) samplerEngine.clearTile(index);
+        if (index < tileStatuses.length) tileStatuses[index] = 'empty';
+      });
+      tileStatuses = [...tileStatuses];
+    }
+
     document.body.style.setProperty('background-color', '#000', 'important');
     currentScreen = 'play';
     setTimeout(() => {
@@ -108,7 +117,7 @@
     on:click={handleAboutClose}
   />
 {:else if currentScreen === 'options'}
-  <OptionsScreen {tileCount} on:save={handleOptionsSave} />
+  <OptionsScreen {tileCount} {tileStatuses} on:save={handleOptionsSave} />
 {/if}
 
 <!-- Keep GridContainer always mounted so tileStatuses and samplerEngine state are preserved -->
