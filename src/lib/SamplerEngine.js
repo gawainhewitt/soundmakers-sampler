@@ -8,7 +8,7 @@ export class SamplerEngine {
     this.initialized = false;
 
     this.tiles = Array.from({ length: tileCount || 4 }, function() {
-      return { status: 'empty', buffer: null, trimStart: 0, trimEnd: 0, speed: 1, reverse: false };
+      return { status: 'empty', buffer: null, trimStart: 0, trimEnd: 0, speed: 1, reverse: false, reversedBuffer: null };
     });
 
     this.activeSources = new Map();
@@ -151,6 +151,7 @@ export class SamplerEngine {
       this.tiles[tileIndex].trimEnd = audioBuffer.duration;
       this.tiles[tileIndex].speed = 1;
       this.tiles[tileIndex].reverse = false;
+      this.tiles[tileIndex].reversedBuffer = null;
 
       console.log(
         'SamplerEngine: recording stopped for tile', tileIndex,
@@ -231,26 +232,27 @@ export class SamplerEngine {
     }
 
     var source = this.audioContext.createBufferSource();
-    source.buffer = tile.buffer;
+    var reverse = !!tile.reverse;
+    var buf = reverse ? this._getReversedBuffer(tile) : tile.buffer;
+    source.buffer = buf;
     source.loop = loop;
     var gainNode = this.audioContext.createGain();
     gainNode.gain.value = 1.0;
     source.connect(gainNode);
     gainNode.connect(this.audioContext.destination);
 
-    // Playback speed effect (playbackRate; also shifts pitch). Negative rate
-    // plays in reverse. When reversed, start from the end of the trimmed region.
-    var reverse = !!tile.reverse;
+    // Playback speed effect (playbackRate; also shifts pitch)
     var speed = (typeof tile.speed === 'number' && tile.speed > 0) ? tile.speed : 1;
-    source.playbackRate.value = reverse ? -speed : speed;
+    source.playbackRate.value = speed;
 
-    // Honour any trim points (default to the full buffer)
+    // Honour any trim points (default to the full buffer). Trim start/end are in
+    // original-buffer time; map them into the (possibly reversed) buffer.
     var start = (typeof tile.trimStart === 'number') ? tile.trimStart : 0;
-    var end = (typeof tile.trimEnd === 'number' && tile.trimEnd > 0)
+    var originalEnd = (typeof tile.trimEnd === 'number' && tile.trimEnd > 0)
       ? tile.trimEnd
-      : tile.buffer.duration;
-    var dur = Math.max(0.001, end - start);
-    var offset = reverse ? end : start;
+      : buf.duration;
+    var dur = Math.max(0.001, originalEnd - start);
+    var offset = reverse ? (buf.duration - originalEnd) : start;
     source.start(0, offset, dur);
 
     var self = this;
@@ -312,6 +314,28 @@ export class SamplerEngine {
     }
   }
 
+  // Returns a cached reversed copy of the tile's buffer, reversing the sample
+  // data itself (more reliable than a negative playbackRate, which is not
+  // supported consistently across browsers). Monochannel data: for simplicity we
+  // reverse the first channel.
+  _getReversedBuffer(tile) {
+    if (tile.reversedBuffer) return tile.reversedBuffer;
+
+    var orig = tile.buffer;
+    var channels = orig.numberOfChannels;
+    var length = orig.length;
+    var out = this.audioContext.createBuffer(channels, length, orig.sampleRate);
+    for (var ch = 0; ch < channels; ch++) {
+      var src = orig.getChannelData(ch);
+      var dst = out.getChannelData(ch);
+      for (var i = 0; i < length; i++) {
+        dst[i] = src[length - 1 - i];
+      }
+    }
+    tile.reversedBuffer = out;
+    return out;
+  }
+
   // ── Tile management ───────────────────────────────────────────────────────
 
   clearTile(tileIndex) {
@@ -322,6 +346,7 @@ export class SamplerEngine {
     this.tiles[tileIndex].trimEnd = 0;
     this.tiles[tileIndex].speed = 1;
     this.tiles[tileIndex].reverse = false;
+    this.tiles[tileIndex].reversedBuffer = null;
     console.log('SamplerEngine: cleared tile', tileIndex);
   }
 
@@ -344,7 +369,7 @@ export class SamplerEngine {
   setTileCount(count) {
     var self = this;
     var newTiles = Array.from({ length: count }, function(_, i) {
-      return self.tiles[i] || { status: 'empty', buffer: null, trimStart: 0, trimEnd: 0, speed: 1, reverse: false };
+      return self.tiles[i] || { status: 'empty', buffer: null, trimStart: 0, trimEnd: 0, speed: 1, reverse: false, reversedBuffer: null };
     });
 
     // Stop any playback/recording that falls outside the new range
