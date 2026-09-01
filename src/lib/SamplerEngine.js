@@ -296,6 +296,24 @@ export class SamplerEngine {
 
   // ── Panic ─────────────────────────────────────────────────────────────────
 
+  // Stop any active recording (keeping the recorded sound) and stop all
+  // playback. Returns the index of the tile that was recording, or null.
+  async stopActiveRecording() {
+    var stoppedIndex = null;
+    if (this.recordingTileIndex !== null) {
+      var index = this.recordingTileIndex;
+      var ok = await this.stopRecording(index);
+      if (ok) stoppedIndex = index;
+    }
+
+    this.activeSources.forEach(function(source) {
+      try { source.stop(0); } catch (e) { /* ignore */ }
+    });
+    this.activeSources.clear();
+
+    return stoppedIndex;
+  }
+
   panic() {
     this.activeSources.forEach(function(source) {
       try { source.stop(0); } catch (e) { /* ignore */ }

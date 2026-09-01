@@ -45,12 +45,26 @@
     }, 100);
   }
 
-  function handleOptionsClick() {
+  async function handleOptionsClick() {
+    if (samplerEngine) {
+      const stoppedIndex = await samplerEngine.stopActiveRecording();
+      if (stoppedIndex !== null && stoppedIndex < tileStatuses.length) {
+        tileStatuses[stoppedIndex] = 'ready';
+        tileStatuses = [...tileStatuses];
+      }
+    }
     document.body.style.setProperty('background-color', 'white', 'important');
     currentScreen = 'options';
   }
 
-  function handleAboutClick() {
+  async function handleAboutClick() {
+    if (samplerEngine) {
+      const stoppedIndex = await samplerEngine.stopActiveRecording();
+      if (stoppedIndex !== null && stoppedIndex < tileStatuses.length) {
+        tileStatuses[stoppedIndex] = 'ready';
+        tileStatuses = [...tileStatuses];
+      }
+    }
     document.body.style.setProperty('background-color', 'white', 'important');
     currentScreen = 'about';
   }
