@@ -8,7 +8,7 @@ export class SamplerEngine {
     this.initialized = false;
 
     this.tiles = Array.from({ length: tileCount || 4 }, function() {
-      return { status: 'empty', buffer: null, trimStart: 0, trimEnd: 0, speed: 1, reverse: false, reversedBuffer: null, reverb: 0 };
+      return { status: 'empty', buffer: null, trimStart: 0, trimEnd: 0, speed: 1, reverse: false, reversedBuffer: null, reverb: 0, delay: 0 };
     });
 
     this.activeSources = new Map();
@@ -152,6 +152,7 @@ export class SamplerEngine {
       this.tiles[tileIndex].speed = 1;
       this.tiles[tileIndex].reverse = false;
       this.tiles[tileIndex].reverb = 0;
+      this.tiles[tileIndex].delay = 0;
       this.tiles[tileIndex].reversedBuffer = null;
 
       console.log(
@@ -250,11 +251,27 @@ export class SamplerEngine {
       var convolver = this.audioContext.createConvolver();
       convolver.buffer = this._getImpulseResponse();
       convolver.normalize = true;
-      var wetGain = this.audioContext.createGain();
-      wetGain.gain.value = reverbAmount;
+      var reverbGain = this.audioContext.createGain();
+      reverbGain.gain.value = reverbAmount;
       source.connect(convolver);
-      convolver.connect(wetGain);
-      wetGain.connect(this.audioContext.destination);
+      convolver.connect(reverbGain);
+      reverbGain.connect(this.audioContext.destination);
+    }
+
+    // Delay (wet) path — DelayNode with feedback
+    var delayAmount = (typeof tile.delay === 'number') ? Math.max(0, Math.min(1, tile.delay)) : 0;
+    if (delayAmount > 0) {
+      var delay = this.audioContext.createDelay(2.0);
+      delay.delayTime.value = 0.3;
+      var feedback = this.audioContext.createGain();
+      feedback.gain.value = 0.35;
+      var delayGain = this.audioContext.createGain();
+      delayGain.gain.value = delayAmount;
+      source.connect(delay);
+      delay.connect(feedback);
+      feedback.connect(delay);
+      delay.connect(delayGain);
+      delayGain.connect(this.audioContext.destination);
     }
 
     // Playback speed effect (playbackRate; also shifts pitch)
@@ -323,6 +340,19 @@ export class SamplerEngine {
   getReverb(tileIndex) {
     var tile = this.tiles[tileIndex];
     return tile ? tile.reverb || 0 : 0;
+  }
+
+  setDelay(tileIndex, amount) {
+    var tile = this.tiles[tileIndex];
+    if (!tile) return false;
+    tile.delay = Math.max(0, Math.min(1, amount));
+    console.log('SamplerEngine: tile', tileIndex, 'delay →', tile.delay.toFixed(2));
+    return true;
+  }
+
+  getDelay(tileIndex) {
+    var tile = this.tiles[tileIndex];
+    return tile ? tile.delay || 0 : 0;
   }
 
   setTrim(tileIndex, start, end) {
@@ -395,6 +425,7 @@ export class SamplerEngine {
     this.tiles[tileIndex].speed = 1;
     this.tiles[tileIndex].reverse = false;
     this.tiles[tileIndex].reverb = 0;
+    this.tiles[tileIndex].delay = 0;
     this.tiles[tileIndex].reversedBuffer = null;
     console.log('SamplerEngine: cleared tile', tileIndex);
   }
@@ -418,7 +449,7 @@ export class SamplerEngine {
   setTileCount(count) {
     var self = this;
     var newTiles = Array.from({ length: count }, function(_, i) {
-      return self.tiles[i] || { status: 'empty', buffer: null, trimStart: 0, trimEnd: 0, speed: 1, reverse: false, reversedBuffer: null, reverb: 0 };
+      return self.tiles[i] || { status: 'empty', buffer: null, trimStart: 0, trimEnd: 0, speed: 1, reverse: false, reversedBuffer: null, reverb: 0, delay: 0 };
     });
 
     // Stop any playback/recording that falls outside the new range

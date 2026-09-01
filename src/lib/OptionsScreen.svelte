@@ -12,12 +12,14 @@
   export let getSpeed = () => 1;
   export let getReverse = () => false;
   export let getReverb = () => 0;
+  export let getDelay = () => 0;
   export let playTile = () => 0;
   export let stopTile = () => null;
   export let setTrim = () => false;
   export let setSpeed = () => false;
   export let setReverse = () => false;
   export let setReverb = () => false;
+  export let setDelay = () => false;
 
   const TILE_COUNT_OPTIONS = [1, 2, 4, 6, 8];
   let selectedCount = tileCount;
@@ -149,12 +151,14 @@
   let speed = 1;
   let reversed = false;
   let reverb = 0;
+  let delay = 0;
 
   function initSpeed() {
     if (selectedTile === null) return;
     speed = getSpeed(selectedTile);
     reversed = getReverse(selectedTile);
     reverb = getReverb(selectedTile);
+    delay = getDelay(selectedTile);
   }
 
   function handleSpeedInput() {
@@ -171,6 +175,11 @@
   function handleReverbInput() {
     if (selectedTile === null) return;
     setReverb(selectedTile, reverb);
+  }
+
+  function handleDelayInput() {
+    if (selectedTile === null) return;
+    setDelay(selectedTile, delay);
   }
 
   // Grid size in px, measured so the whole column fits the viewport in both
@@ -366,6 +375,20 @@
             bind:value={reverb}
             on:input={handleReverbInput}
             on:change={handleReverbInput}
+          />
+        </div>
+
+        <div class="effect-control">
+          <label class="effect-label" for="delay-slider">Delay: <strong>{Math.round(delay * 100)}%</strong></label>
+          <input
+            id="delay-slider"
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            bind:value={delay}
+            on:input={handleDelayInput}
+            on:change={handleDelayInput}
           />
         </div>
 
