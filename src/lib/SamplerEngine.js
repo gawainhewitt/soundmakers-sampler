@@ -8,7 +8,7 @@ export class SamplerEngine {
     this.initialized = false;
 
     this.tiles = Array.from({ length: tileCount || 4 }, function() {
-      return { status: 'empty', buffer: null, trimStart: 0, trimEnd: 0, speed: 1, reverse: false, reversedBuffer: null };
+      return { status: 'empty', buffer: null, trimStart: 0, trimEnd: 0, speed: 1, reverse: false, reversedBuffer: null, reverb: 0 };
     });
 
     this.activeSources = new Map();
@@ -151,6 +151,7 @@ export class SamplerEngine {
       this.tiles[tileIndex].trimEnd = audioBuffer.duration;
       this.tiles[tileIndex].speed = 1;
       this.tiles[tileIndex].reverse = false;
+      this.tiles[tileIndex].reverb = 0;
       this.tiles[tileIndex].reversedBuffer = null;
 
       console.log(
@@ -236,10 +237,25 @@ export class SamplerEngine {
     var buf = reverse ? this._getReversedBuffer(tile) : tile.buffer;
     source.buffer = buf;
     source.loop = loop;
-    var gainNode = this.audioContext.createGain();
-    gainNode.gain.value = 1.0;
-    source.connect(gainNode);
-    gainNode.connect(this.audioContext.destination);
+
+    // Dry path
+    var dryGain = this.audioContext.createGain();
+    dryGain.gain.value = 1.0;
+    source.connect(dryGain);
+    dryGain.connect(this.audioContext.destination);
+
+    // Reverb (wet) path — ConvolverNode with a generated impulse response
+    var reverbAmount = (typeof tile.reverb === 'number') ? Math.max(0, Math.min(1, tile.reverb)) : 0;
+    if (reverbAmount > 0) {
+      var convolver = this.audioContext.createConvolver();
+      convolver.buffer = this._getImpulseResponse();
+      convolver.normalize = true;
+      var wetGain = this.audioContext.createGain();
+      wetGain.gain.value = reverbAmount;
+      source.connect(convolver);
+      convolver.connect(wetGain);
+      wetGain.connect(this.audioContext.destination);
+    }
 
     // Playback speed effect (playbackRate; also shifts pitch)
     var speed = (typeof tile.speed === 'number' && tile.speed > 0) ? tile.speed : 1;
@@ -296,6 +312,19 @@ export class SamplerEngine {
     return tile ? !!tile.reverse : false;
   }
 
+  setReverb(tileIndex, amount) {
+    var tile = this.tiles[tileIndex];
+    if (!tile) return false;
+    tile.reverb = Math.max(0, Math.min(1, amount));
+    console.log('SamplerEngine: tile', tileIndex, 'reverb →', tile.reverb.toFixed(2));
+    return true;
+  }
+
+  getReverb(tileIndex) {
+    var tile = this.tiles[tileIndex];
+    return tile ? tile.reverb || 0 : 0;
+  }
+
   setTrim(tileIndex, start, end) {
     var tile = this.tiles[tileIndex];
     if (!tile || !tile.buffer) return false;
@@ -338,6 +367,25 @@ export class SamplerEngine {
 
   // ── Tile management ───────────────────────────────────────────────────────
 
+  // Generate a simple decaying-noise impulse response, cached once.
+  _getImpulseResponse() {
+    if (this._reverbIR) return this._reverbIR;
+
+    var ctx = this.audioContext;
+    var rate = ctx.sampleRate;
+    var length = Math.floor(rate * 2.5); // 2.5s reverb tail
+    var impulse = ctx.createBuffer(2, length, rate);
+    for (var ch = 0; ch < 2; ch++) {
+      var data = impulse.getChannelData(ch);
+      for (var i = 0; i < length; i++) {
+        // exponentially decaying noise
+        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 2.5);
+      }
+    }
+    this._reverbIR = impulse;
+    return impulse;
+  }
+
   clearTile(tileIndex) {
     this.stopTile(tileIndex);
     this.tiles[tileIndex].buffer = null;
@@ -346,6 +394,7 @@ export class SamplerEngine {
     this.tiles[tileIndex].trimEnd = 0;
     this.tiles[tileIndex].speed = 1;
     this.tiles[tileIndex].reverse = false;
+    this.tiles[tileIndex].reverb = 0;
     this.tiles[tileIndex].reversedBuffer = null;
     console.log('SamplerEngine: cleared tile', tileIndex);
   }
@@ -369,7 +418,7 @@ export class SamplerEngine {
   setTileCount(count) {
     var self = this;
     var newTiles = Array.from({ length: count }, function(_, i) {
-      return self.tiles[i] || { status: 'empty', buffer: null, trimStart: 0, trimEnd: 0, speed: 1, reverse: false, reversedBuffer: null };
+      return self.tiles[i] || { status: 'empty', buffer: null, trimStart: 0, trimEnd: 0, speed: 1, reverse: false, reversedBuffer: null, reverb: 0 };
     });
 
     // Stop any playback/recording that falls outside the new range

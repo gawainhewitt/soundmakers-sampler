@@ -11,11 +11,13 @@
   export let getTrim = () => [0, 0];
   export let getSpeed = () => 1;
   export let getReverse = () => false;
+  export let getReverb = () => 0;
   export let playTile = () => 0;
   export let stopTile = () => null;
   export let setTrim = () => false;
   export let setSpeed = () => false;
   export let setReverse = () => false;
+  export let setReverb = () => false;
 
   const TILE_COUNT_OPTIONS = [1, 2, 4, 6, 8];
   let selectedCount = tileCount;
@@ -143,14 +145,16 @@
     }
   }
 
-  // ── Editor speed effect ───────────────────────────────────────────────────
+  // ── Editor speed / reverb effects ─────────────────────────────────────────
   let speed = 1;
   let reversed = false;
+  let reverb = 0;
 
   function initSpeed() {
     if (selectedTile === null) return;
     speed = getSpeed(selectedTile);
     reversed = getReverse(selectedTile);
+    reverb = getReverb(selectedTile);
   }
 
   function handleSpeedInput() {
@@ -162,6 +166,11 @@
     if (selectedTile === null) return;
     reversed = !reversed;
     setReverse(selectedTile, reversed);
+  }
+
+  function handleReverbInput() {
+    if (selectedTile === null) return;
+    setReverb(selectedTile, reverb);
   }
 
   // Grid size in px, measured so the whole column fits the viewport in both
@@ -343,6 +352,20 @@
             bind:value={speed}
             on:input={handleSpeedInput}
             on:change={handleSpeedInput}
+          />
+        </div>
+
+        <div class="effect-control">
+          <label class="effect-label" for="reverb-slider">Reverb: <strong>{Math.round(reverb * 100)}%</strong></label>
+          <input
+            id="reverb-slider"
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            bind:value={reverb}
+            on:input={handleReverbInput}
+            on:change={handleReverbInput}
           />
         </div>
 

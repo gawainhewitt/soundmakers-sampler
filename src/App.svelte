@@ -138,11 +138,13 @@
     getTrim={(i) => (samplerEngine ? samplerEngine.getTrim(i) : [0, 0])}
     getSpeed={(i) => (samplerEngine ? samplerEngine.getSpeed(i) : 1)}
     getReverse={(i) => (samplerEngine ? samplerEngine.getReverse(i) : false)}
+    getReverb={(i) => (samplerEngine ? samplerEngine.getReverb(i) : 0)}
     playTile={(i, opts) => (samplerEngine ? samplerEngine.playTile(i, opts) : 0)}
     stopTile={(i) => (samplerEngine ? samplerEngine.stopTile(i) : null)}
     setTrim={(i, s, e) => (samplerEngine ? samplerEngine.setTrim(i, s, e) : false)}
     setSpeed={(i, s) => (samplerEngine ? samplerEngine.setSpeed(i, s) : false)}
     setReverse={(i, r) => (samplerEngine ? samplerEngine.setReverse(i, r) : false)}
+    setReverb={(i, a) => (samplerEngine ? samplerEngine.setReverb(i, a) : false)}
     on:save={handleOptionsSave}
   />
 {/if}
