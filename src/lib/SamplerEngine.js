@@ -8,7 +8,7 @@ export class SamplerEngine {
     this.initialized = false;
 
     this.tiles = Array.from({ length: tileCount || 4 }, function() {
-      return { status: 'empty', buffer: null };
+      return { status: 'empty', buffer: null, trimStart: 0, trimEnd: 0 };
     });
 
     this.activeSources = new Map();
@@ -147,6 +147,8 @@ export class SamplerEngine {
 
       this.tiles[tileIndex].buffer = audioBuffer;
       this.tiles[tileIndex].status = 'ready';
+      this.tiles[tileIndex].trimStart = 0;
+      this.tiles[tileIndex].trimEnd = audioBuffer.duration;
 
       console.log(
         'SamplerEngine: recording stopped for tile', tileIndex,
@@ -233,7 +235,14 @@ export class SamplerEngine {
     gainNode.gain.value = 1.0;
     source.connect(gainNode);
     gainNode.connect(this.audioContext.destination);
-    source.start(0);
+
+    // Honour any trim points (default to the full buffer)
+    var start = (typeof tile.trimStart === 'number') ? tile.trimStart : 0;
+    var end = (typeof tile.trimEnd === 'number' && tile.trimEnd > 0)
+      ? tile.trimEnd
+      : tile.buffer.duration;
+    var dur = Math.max(0.001, end - start);
+    source.start(0, Math.min(start, end), dur);
 
     var self = this;
     this.activeSources.set(tileIndex, source);
@@ -244,8 +253,18 @@ export class SamplerEngine {
       }
     };
 
-    console.log('SamplerEngine: playing tile', tileIndex, '— duration:', tile.buffer.duration.toFixed(2) + 's');
-    return tile.buffer.duration;
+    console.log('SamplerEngine: playing tile', tileIndex, '— duration:', dur.toFixed(2) + 's');
+    return dur;
+  }
+
+  setTrim(tileIndex, start, end) {
+    var tile = this.tiles[tileIndex];
+    if (!tile || !tile.buffer) return false;
+    var duration = tile.buffer.duration;
+    tile.trimStart = Math.max(0, Math.min(duration, start));
+    tile.trimEnd = Math.max(0, Math.min(duration, end));
+    console.log('SamplerEngine: tile', tileIndex, 'trim →', tile.trimStart.toFixed(2), '-', tile.trimEnd.toFixed(2));
+    return true;
   }
 
   stopTile(tileIndex) {
@@ -273,11 +292,18 @@ export class SamplerEngine {
     return this.tiles[tileIndex] ? this.tiles[tileIndex].buffer : null;
   }
 
+  getTrim(tileIndex) {
+    const tile = this.tiles[tileIndex];
+    if (!tile || !tile.buffer) return [0, 0];
+    const dur = tile.buffer.duration;
+    return [tile.trimStart || 0, tile.trimEnd || dur];
+  }
+
   // Resize the number of tiles, preserving any existing recordings
   setTileCount(count) {
     var self = this;
     var newTiles = Array.from({ length: count }, function(_, i) {
-      return self.tiles[i] || { status: 'empty', buffer: null };
+      return self.tiles[i] || { status: 'empty', buffer: null, trimStart: 0, trimEnd: 0 };
     });
 
     // Stop any playback/recording that falls outside the new range

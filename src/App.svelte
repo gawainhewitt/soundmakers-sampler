@@ -135,8 +135,10 @@
     {tileCount}
     {tileStatuses}
     getTileBuffer={(i) => (samplerEngine ? samplerEngine.getTileBuffer(i) : null)}
+    getTrim={(i) => (samplerEngine ? samplerEngine.getTrim(i) : [0, 0])}
     playTile={(i, opts) => (samplerEngine ? samplerEngine.playTile(i, opts) : 0)}
     stopTile={(i) => (samplerEngine ? samplerEngine.stopTile(i) : null)}
+    setTrim={(i, s, e) => (samplerEngine ? samplerEngine.setTrim(i, s, e) : false)}
     on:save={handleOptionsSave}
   />
 {/if}

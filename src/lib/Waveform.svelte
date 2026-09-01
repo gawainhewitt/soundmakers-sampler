@@ -1,13 +1,19 @@
 <script>
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, createEventDispatcher } from 'svelte';
+
+  const dispatch = createEventDispatcher();
 
   // AudioBuffer whose waveform should be drawn, or null.
   export let buffer = null;
   export let color = '#06C0F0';
   // Playback cursor position on a 0..1 scale, or -1 to hide.
   export let cursor = -1;
+  // Trim region on a 0..1 scale (0 = start of buffer, 1 = end).
+  export let trimStart = 0;
+  export let trimEnd = 1;
 
   let canvasEl;
+  let dragging = null; // 'start' | 'end' | null
 
   function draw() {
     const canvas = canvasEl;
@@ -36,6 +42,10 @@
     const samplesPerBar = Math.floor(data.length / numBars);
     if (samplesPerBar < 1) return;
 
+    // Boundary pixels for the trim region
+    const sx = Math.round(trimStart * w);
+    const ex = Math.round(trimEnd * w);
+
     ctx.fillStyle = color;
 
     for (let i = 0; i < numBars; i++) {
@@ -50,18 +60,81 @@
       if (max < min) continue;
 
       const x = i;
+      // Dim the trimmed-out regions
+      if (x < sx || x > ex) {
+        ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      } else {
+        ctx.fillStyle = color;
+      }
       const top = mid - max * (mid - 1);
       const bottom = mid - min * (mid - 1);
       const height = Math.max(1, bottom - top);
       ctx.fillRect(x, top, 1, height);
     }
 
-    // Playback cursor
+    // Trim handle lines (yellow for visibility on the dark panel)
+    ctx.fillStyle = '#FFD05A';
+    ctx.fillRect(sx - 1, 0, 3, h);
+    ctx.fillRect(ex - 1, 0, 3, h);
+
+    // Playback cursor — swept across the trimmed region so it matches what is heard
     if (cursor >= 0) {
-      const cx = Math.min(w, Math.max(0, cursor * w));
-      ctx.fillStyle = 'rgba(255,255,255,0.95)';
+      const pos = trimStart + cursor * (trimEnd - trimStart);
+      const cx = Math.min(w, Math.max(0, pos * w));
+      ctx.fillStyle = 'rgba(120,255,120,0.95)';
       ctx.fillRect(cx - 1, 0, 2, h);
     }
+  }
+
+  // Convert a client X to a 0..1 position
+  function ratioFromClientX(clientX) {
+    const rect = canvasEl.getBoundingClientRect();
+    if (!rect.width) return 0;
+    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  }
+
+  function handleDown(e) {
+    if (!buffer) return;
+    const ratio = ratioFromClientX(e.clientX);
+    const px = ratio * canvasEl.clientWidth;
+
+    const sx = trimStart * canvasEl.clientWidth;
+    const ex = trimEnd * canvasEl.clientWidth;
+
+    // Which handle is closer? Prefer an edge, accounting for touch size.
+    const dStart = Math.abs(px - sx);
+    const dEnd = Math.abs(px - ex);
+    const grab = dStart < dEnd ? 'start' : 'end';
+
+    if (Math.min(dStart, dEnd) < 24) {
+      dragging = grab;
+      canvasEl.setPointerCapture(e.pointerId);
+      e.preventDefault();
+      moveTo(ratio);
+    } else {
+      // Clicking inside the region moves playback cursor here (future scrub)
+      dragging = null;
+    }
+  }
+
+  function handleMove(e) {
+    if (!dragging) return;
+    moveTo(ratioFromClientX(e.clientX));
+  }
+
+  function handleUp(e) {
+    if (!dragging) return;
+    dragging = null;
+    try { canvasEl.releasePointerCapture(e.pointerId); } catch (err) {}
+  }
+
+  function moveTo(ratio) {
+    if (dragging === 'start') {
+      trimStart = Math.min(ratio, trimEnd - 0.001);
+    } else if (dragging === 'end') {
+      trimEnd = Math.max(ratio, trimStart + 0.001);
+    }
+    dispatch('trimchange', { start: trimStart, end: trimEnd });
   }
 
   function handleResize() {
@@ -79,15 +152,14 @@
     window.removeEventListener('orientationchange', handleResize);
   });
 
-  $: if (buffer) { cursor; draw(); } // redraw when buffer or cursor changes
+  $: if (buffer) { cursor; trimStart; trimEnd; draw(); }
 </script>
 
-<canvas bind:this={canvasEl}></canvas>
-
-<style>
-  canvas {
-    display: block;
-    width: 100%;
-    height: 100%;
-  }
-</style>
+<canvas
+  bind:this={canvasEl}
+  on:pointerdown={handleDown}
+  on:pointermove={handleMove}
+  on:pointerup={handleUp}
+  on:pointercancel={handleUp}
+  style="touch-action: none;"
+></canvas>

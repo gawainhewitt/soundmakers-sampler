@@ -8,8 +8,10 @@
   export let tileCount = 4;
   export let tileStatuses = Array(4).fill('empty');
   export let getTileBuffer = () => null;
+  export let getTrim = () => [0, 0];
   export let playTile = () => 0;
   export let stopTile = () => null;
+  export let setTrim = () => false;
 
   const TILE_COUNT_OPTIONS = [1, 2, 4, 6, 8];
   let selectedCount = tileCount;
@@ -111,6 +113,29 @@
     playRaf = requestAnimationFrame(frame);
   }
 
+  // ── Editor trim ───────────────────────────────────────────────────────────
+  // Trim region as 0..1 ratios of the buffer. Initialised when the editor opens.
+  let trimStart = 0;
+  let trimEnd = 1;
+
+  function initTrim() {
+    if (!editorBuffer || selectedTile === null) return;
+    const dur = editorBuffer.duration || 1;
+    const [s, e] = getTrim(selectedTile);
+    trimStart = dur > 0 ? (s || 0) / dur : 0;
+    trimEnd = dur > 0 ? (e || dur) / dur : 1;
+  }
+
+  function handleTrimChange(event) {
+    const e = event.detail;
+    trimStart = e.start;
+    trimEnd = e.end;
+    if (editorBuffer && selectedTile !== null) {
+      const dur = editorBuffer.duration;
+      setTrim(selectedTile, e.start * dur, e.end * dur);
+    }
+  }
+
   // Grid size in px, measured so the whole column fits the viewport in both
   // orientations (title + tile count + grid + Done all visible).
   let gridSize = 0;
@@ -150,7 +175,7 @@
   function openEditor(index) {
     selectedTile = index;
     // measure after the panel has rendered
-    requestAnimationFrame(measureEditor);
+    requestAnimationFrame(() => { measureEditor(); initTrim(); });
   }
 
   function closeEditor() {
@@ -256,7 +281,13 @@
 
     {#if editorStatus === 'ready'}
       <div class="waveform-area" style="height: {waveformHeight}px;">
-        <Waveform buffer={editorBuffer} {cursor} />
+        <Waveform
+          buffer={editorBuffer}
+          {cursor}
+          {trimStart}
+          {trimEnd}
+          on:trimchange={handleTrimChange}
+        />
       </div>
 
       <div class="play-row">
