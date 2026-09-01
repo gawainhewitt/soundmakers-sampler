@@ -53,7 +53,7 @@
     const gapTotal = 3 * 16;
     const paddingTotal = 4 * 16;
 
-    const availH = screen.clientHeight - fixedH - gapTotal - paddingTotal;
+    const availH = window.innerHeight - fixedH - gapTotal - paddingTotal;
     const maxByWidth = window.innerWidth * 0.8;
     gridSize = Math.max(0, Math.min(availH, maxByWidth));
   }
