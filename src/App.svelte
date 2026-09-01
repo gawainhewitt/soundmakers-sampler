@@ -76,9 +76,18 @@
     currentScreen = 'load';
   }
 
-  function handleLoadClose() {
+  function handleLoadClose(event) {
     document.body.style.setProperty('background-color', '#000', 'important');
     currentScreen = 'play';
+
+    // Reflect any kit sounds now held by the engine in the tile statuses
+    const loaded = (event && event.detail && event.detail.loaded) || 0;
+    const limit = Math.min(loaded, tileStatuses.length, samplerEngine ? samplerEngine.getTileCount() : 0);
+    for (let i = 0; i < limit; i++) {
+      tileStatuses[i] = samplerEngine.getTileStatus(i);
+    }
+    if (limit > 0) tileStatuses = [...tileStatuses];
+
     setTimeout(() => {
       window.scrollTo(0, 0);
       const vh = window.innerHeight * 0.01;
@@ -168,7 +177,12 @@
     on:save={handleOptionsSave}
   />
 {:else if currentScreen === 'load'}
-  <LoadScreen title="Load a Kit" on:close={handleLoadClose} />
+  <LoadScreen
+    title="Load a Kit"
+    {tileCount}
+    loadTile={(url, i) => (samplerEngine ? samplerEngine.loadTileFromUrl(url, i) : false)}
+    on:close={handleLoadClose}
+  />
 {/if}
 
 <!-- Keep GridContainer always mounted so tileStatuses and samplerEngine state are preserved -->

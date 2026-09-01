@@ -1,0 +1,5 @@
+# Place up to 8 one-shot sound files here (`.wav` recommended, `.flac` also fine).
+# Filenames must be `1.wav` ... `8.wav` (loadTileFromUrl expects them). Short
+# one-shots (a few seconds max) keep file sizes small for older devices.
+#
+# Remove this placeholder once real sound files are added.

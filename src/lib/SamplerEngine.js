@@ -397,6 +397,41 @@ export class SamplerEngine {
 
   // ── Tile management ───────────────────────────────────────────────────────
 
+  // Load an audio file (URL) into a tile, decoding it and marking the tile ready.
+  // Reuses the normal tile path, so trim/speed/reverse/reverb/delay all apply.
+  async loadTileFromUrl(fileURL, tileIndex) {
+    var tile = this.tiles[tileIndex];
+    if (!tile) return false;
+
+    try {
+      var self = this;
+      var response = await fetch(fileURL);
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      var arrayBuffer = await response.arrayBuffer();
+
+      var audioBuffer = await new Promise(function(resolve, reject) {
+        self.audioContext.decodeAudioData(arrayBuffer, resolve, reject);
+      });
+
+      this.stopTile(tileIndex);
+      tile.buffer = audioBuffer;
+      tile.status = 'ready';
+      tile.trimStart = 0;
+      tile.trimEnd = audioBuffer.duration;
+      tile.speed = 1;
+      tile.reverse = false;
+      tile.reverb = 0;
+      tile.delay = 0;
+      tile.reversedBuffer = null;
+
+      console.log('SamplerEngine: loaded tile', tileIndex, 'from', fileURL, '— duration:', audioBuffer.duration.toFixed(2) + 's');
+      return true;
+    } catch (error) {
+      console.error('SamplerEngine: failed to load', fileURL, 'into tile', tileIndex, error);
+      return false;
+    }
+  }
+
   // Generate a simple decaying-noise impulse response, cached once.
   _getImpulseResponse() {
     if (this._reverbIR) return this._reverbIR;
@@ -436,6 +471,10 @@ export class SamplerEngine {
 
   getTileBuffer(tileIndex) {
     return this.tiles[tileIndex] ? this.tiles[tileIndex].buffer : null;
+  }
+
+  getTileCount() {
+    return this.tiles.length;
   }
 
   getTrim(tileIndex) {
