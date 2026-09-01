@@ -318,38 +318,38 @@
         />
       </div>
 
-      <div class="play-row">
+      <div class="editor-controls">
         <button class="action-button" on:click={togglePlay} type="button">
           {isPlaying ? 'Stop' : 'Play'}
         </button>
+
+        <button
+          class="action-button"
+          class:active={reversed}
+          on:click={handleReverseToggle}
+          type="button"
+        >
+          Reverse {reversed ? 'On' : 'Off'}
+        </button>
+
+        <div class="effect-control">
+          <label class="effect-label" for="speed-slider">Speed: <strong>{speed.toFixed(2)}×</strong></label>
+          <input
+            id="speed-slider"
+            type="range"
+            min="0.25"
+            max="2"
+            step="0.05"
+            bind:value={speed}
+            on:input={handleSpeedInput}
+            on:change={handleSpeedInput}
+          />
+        </div>
+
+        <button class="action-button danger" on:click={() => toggleClear(selectedTile)} type="button">
+          Clear
+        </button>
       </div>
-
-      <div class="effect-control">
-        <label class="effect-label" for="speed-slider">Speed: <strong>{speed.toFixed(2)}×</strong></label>
-        <input
-          id="speed-slider"
-          type="range"
-          min="0.25"
-          max="2"
-          step="0.05"
-          bind:value={speed}
-          on:input={handleSpeedInput}
-          on:change={handleSpeedInput}
-        />
-      </div>
-
-      <button
-        class="action-button"
-        class:active={reversed}
-        on:click={handleReverseToggle}
-        type="button"
-      >
-        Reverse {reversed ? 'On' : 'Off'}
-      </button>
-
-      <button class="action-button danger" on:click={() => toggleClear(selectedTile)} type="button">
-        Clear recording
-      </button>
     {:else if clearedTiles.has(selectedTile)}
       <button class="action-button" on:click={() => toggleClear(selectedTile)} type="button">
         Restore recording
@@ -545,6 +545,26 @@
     box-shadow: 0 0 0 3px rgba(255, 145, 48, 0.4);
   }
 
+  /* Two-column grid for the editor's controls below the waveform, so they
+     don't stack tall and push the Back button off-screen */
+  .editor-controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    width: 100%;
+    max-width: 600px;
+  }
+
+  .editor-controls .effect-control {
+    grid-column: 1 / -1; /* span the full width */
+  }
+
+  .editor-controls .action-button {
+    width: 100%;
+    padding: 0.9rem 1.25rem;
+    font-size: 1rem;
+  }
+
   .effect-control {
     display: flex;
     flex-direction: column;
@@ -568,5 +588,18 @@
     font-size: 1.1rem;
     color: #999;
     margin: 0;
+  }
+
+  /* Shrink the editor's vertical footprint slightly in landscape so the Back
+     button keeps a little more breathing room on short (iPad landscape) viewports */
+  @media (orientation: landscape) {
+    .editor-panel {
+      gap: 0.75rem;
+      padding: 1rem 2rem;
+    }
+
+    .editor-panel h2 {
+      font-size: 1.5rem;
+    }
   }
 </style>
