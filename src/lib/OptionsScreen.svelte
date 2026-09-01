@@ -85,7 +85,7 @@
     >
       {#each Array(selectedCount) as _, index}
         {@const isCleared = clearedTiles.has(index)}
-        {@const status = isCleared ? 'empty' : tileStatuses[index]}
+        {@const status = isCleared ? 'empty' : (tileStatuses[index] || 'empty')}
         <button
           class="tile"
           class:cleared={isCleared}
