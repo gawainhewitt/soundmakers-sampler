@@ -5,6 +5,7 @@
   import SplashScreen from './lib/SplashScreen.svelte';
   import IconButton from './lib/IconButton.svelte';
   import OptionsScreen from './lib/OptionsScreen.svelte';
+  import LoadScreen from './lib/LoadScreen.svelte';
   import { SamplerEngine } from './lib/SamplerEngine.js';
 
   let currentScreen = 'splash';
@@ -67,6 +68,23 @@
     }
     document.body.style.setProperty('background-color', 'white', 'important');
     currentScreen = 'about';
+  }
+
+  function handleLoadClick() {
+    if (samplerEngine) samplerEngine.panic();
+    document.body.style.setProperty('background-color', 'white', 'important');
+    currentScreen = 'load';
+  }
+
+  function handleLoadClose() {
+    document.body.style.setProperty('background-color', '#000', 'important');
+    currentScreen = 'play';
+    setTimeout(() => {
+      window.scrollTo(0, 0);
+      const vh = window.innerHeight * 0.01;
+      document.documentElement.style.setProperty('--vh', `${vh}px`);
+      window.dispatchEvent(new Event('resize'));
+    }, 100);
   }
 
   function handleAboutClose() {
@@ -149,6 +167,8 @@
     setDelay={(i, a) => (samplerEngine ? samplerEngine.setDelay(i, a) : false)}
     on:save={handleOptionsSave}
   />
+{:else if currentScreen === 'load'}
+  <LoadScreen title="Load a Kit" on:close={handleLoadClose} />
 {/if}
 
 <!-- Keep GridContainer always mounted so tileStatuses and samplerEngine state are preserved -->
@@ -158,6 +178,9 @@
   </div>
   <div class="icon-top-right">
     <IconButton type="settings" ariaLabel="Options" on:click={handleOptionsClick} />
+  </div>
+  <div class="icon-bottom-right">
+    <IconButton type="load" ariaLabel="Load a kit" on:click={handleLoadClick} />
   </div>
 
   <main>
@@ -201,5 +224,20 @@
     top: 20px;
     right: 65px;
     z-index: 1000;
+  }
+
+  .icon-bottom-right {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 50px;
+    height: 50px;
+    z-index: 1000;
+  }
+
+  /* The icon button is position: fixed by default; anchor it inside the wrapper
+     so it lays out within the fixed wrapper instead of escaping its bounds. */
+  .icon-bottom-right :global(.icon-button) {
+    position: static;
   }
 </style>
