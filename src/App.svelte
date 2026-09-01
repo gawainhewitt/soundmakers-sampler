@@ -131,7 +131,14 @@
     on:click={handleAboutClose}
   />
 {:else if currentScreen === 'options'}
-  <OptionsScreen {tileCount} {tileStatuses} getTileBuffer={(i) => (samplerEngine ? samplerEngine.getTileBuffer(i) : null)} on:save={handleOptionsSave} />
+  <OptionsScreen
+    {tileCount}
+    {tileStatuses}
+    getTileBuffer={(i) => (samplerEngine ? samplerEngine.getTileBuffer(i) : null)}
+    playTile={(i, opts) => (samplerEngine ? samplerEngine.playTile(i, opts) : 0)}
+    stopTile={(i) => (samplerEngine ? samplerEngine.stopTile(i) : null)}
+    on:save={handleOptionsSave}
+  />
 {/if}
 
 <!-- Keep GridContainer always mounted so tileStatuses and samplerEngine state are preserved -->

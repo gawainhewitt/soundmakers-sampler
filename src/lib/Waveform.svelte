@@ -4,6 +4,8 @@
   // AudioBuffer whose waveform should be drawn, or null.
   export let buffer = null;
   export let color = '#06C0F0';
+  // Playback cursor position on a 0..1 scale, or -1 to hide.
+  export let cursor = -1;
 
   let canvasEl;
 
@@ -53,6 +55,13 @@
       const height = Math.max(1, bottom - top);
       ctx.fillRect(x, top, 1, height);
     }
+
+    // Playback cursor
+    if (cursor >= 0) {
+      const cx = Math.min(w, Math.max(0, cursor * w));
+      ctx.fillStyle = 'rgba(255,255,255,0.95)';
+      ctx.fillRect(cx - 1, 0, 2, h);
+    }
   }
 
   function handleResize() {
@@ -70,7 +79,7 @@
     window.removeEventListener('orientationchange', handleResize);
   });
 
-  $: if (buffer) draw();
+  $: if (buffer) { cursor; draw(); } // redraw when buffer or cursor changes
 </script>
 
 <canvas bind:this={canvasEl}></canvas>

@@ -8,6 +8,8 @@
   export let tileCount = 4;
   export let tileStatuses = Array(4).fill('empty');
   export let getTileBuffer = () => null;
+  export let playTile = () => 0;
+  export let stopTile = () => null;
 
   const TILE_COUNT_OPTIONS = [1, 2, 4, 6, 8];
   let selectedCount = tileCount;
@@ -65,6 +67,50 @@
     waveformHeight = Math.min(240, Math.max(80, availH));
   }
 
+  // ── Editor playback ───────────────────────────────────────────────────────
+  let isPlaying = false;
+  let cursor = -1;
+  let playRaf = null;
+  let playStart = 0;
+  let playDuration = 0;
+
+  function stopPlayback() {
+    if (playRaf !== null) {
+      cancelAnimationFrame(playRaf);
+      playRaf = null;
+    }
+    if (selectedTile !== null) stopTile(selectedTile);
+    isPlaying = false;
+    cursor = -1;
+  }
+
+  function togglePlay() {
+    if (selectedTile === null) return;
+    if (isPlaying) {
+      stopPlayback();
+      return;
+    }
+
+    const dur = playTile(selectedTile, { loop: false });
+    if (!dur) return;
+
+    isPlaying = true;
+    cursor = 0;
+    playStart = performance.now();
+    playDuration = dur;
+
+    function frame() {
+      const elapsed = (performance.now() - playStart) / 1000;
+      cursor = Math.min(1, elapsed / playDuration);
+      if (cursor >= 1) {
+        stopPlayback();
+        return;
+      }
+      playRaf = requestAnimationFrame(frame);
+    }
+    playRaf = requestAnimationFrame(frame);
+  }
+
   // Grid size in px, measured so the whole column fits the viewport in both
   // orientations (title + tile count + grid + Done all visible).
   let gridSize = 0;
@@ -108,6 +154,7 @@
   }
 
   function closeEditor() {
+    stopPlayback();
     selectedTile = null;
   }
 
@@ -143,6 +190,7 @@
     window.removeEventListener('resize', () => { updateOrientation(); measureGrid(); measureEditor(); });
     window.removeEventListener('orientationchange', () => { updateOrientation(); measureGrid(); measureEditor(); });
     window.removeEventListener('keydown', handleKeydown);
+    stopPlayback();
   });
 </script>
 
@@ -208,7 +256,13 @@
 
     {#if editorStatus === 'ready'}
       <div class="waveform-area" style="height: {waveformHeight}px;">
-        <Waveform buffer={editorBuffer} />
+        <Waveform buffer={editorBuffer} {cursor} />
+      </div>
+
+      <div class="play-row">
+        <button class="action-button" on:click={togglePlay} type="button">
+          {isPlaying ? 'Stop' : 'Play'}
+        </button>
       </div>
 
       <button class="action-button danger" on:click={() => toggleClear(selectedTile)} type="button">
