@@ -58,6 +58,13 @@
     const status = tileStatuses[index];
 
     if (status === 'empty') {
+      // Auto-stop any tile that is currently recording before starting a new one
+      const recordingIndex = tileStatuses.findIndex((s) => s === 'recording');
+      if (recordingIndex !== -1) {
+        await samplerEngine.stopRecording(recordingIndex);
+        updateTileStatus(recordingIndex, 'ready');
+      }
+
       const ok = await samplerEngine.startRecording(index);
       if (ok) updateTileStatus(index, 'recording');
 
