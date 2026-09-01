@@ -36,6 +36,35 @@
     ? getTileBuffer(selectedTile)
     : null;
 
+  // Height in px for the waveform, measured so the whole editor panel fits the
+  // visible viewport in both orientations (all buttons stay on-screen).
+  let waveformHeight = 200;
+
+  function measureEditor() {
+    const panel = document.querySelector('.editor-panel');
+    if (!panel) return;
+
+    const waveEl = panel.querySelector('.waveform-area');
+    if (!waveEl) return;
+
+    const fixed = 32; // 2rem top + 2rem bottom padding
+    let fixedH = fixed;
+
+    // Sum the heights of all elements that are not the waveform
+    for (const child of panel.children) {
+      if (!child.classList.contains('waveform-area')) {
+        fixedH += child.getBoundingClientRect().height;
+      }
+    }
+
+    // gaps between children (4 children visible when recording: h2, preview,
+    // waveform, clear, back -> 4 gaps of 1.5rem)
+    const gapTotal = 24 * 4;
+
+    const availH = window.innerHeight - fixedH - gapTotal;
+    waveformHeight = Math.min(240, Math.max(80, availH));
+  }
+
   // Grid size in px, measured so the whole column fits the viewport in both
   // orientations (title + tile count + grid + Done all visible).
   let gridSize = 0;
@@ -74,6 +103,8 @@
 
   function openEditor(index) {
     selectedTile = index;
+    // measure after the panel has rendered
+    requestAnimationFrame(measureEditor);
   }
 
   function closeEditor() {
@@ -103,14 +134,14 @@
   onMount(() => {
     updateOrientation();
     measureGrid();
-    window.addEventListener('resize', () => { updateOrientation(); measureGrid(); });
-    window.addEventListener('orientationchange', () => { updateOrientation(); measureGrid(); });
+    window.addEventListener('resize', () => { updateOrientation(); measureGrid(); measureEditor(); });
+    window.addEventListener('orientationchange', () => { updateOrientation(); measureGrid(); measureEditor(); });
     window.addEventListener('keydown', handleKeydown);
   });
 
   onDestroy(() => {
-    window.removeEventListener('resize', () => { updateOrientation(); measureGrid(); });
-    window.removeEventListener('orientationchange', () => { updateOrientation(); measureGrid(); });
+    window.removeEventListener('resize', () => { updateOrientation(); measureGrid(); measureEditor(); });
+    window.removeEventListener('orientationchange', () => { updateOrientation(); measureGrid(); measureEditor(); });
     window.removeEventListener('keydown', handleKeydown);
   });
 </script>
@@ -176,7 +207,7 @@
     ></div>
 
     {#if editorStatus === 'ready'}
-      <div class="waveform-area">
+      <div class="waveform-area" style="height: {waveformHeight}px;">
         <Waveform buffer={editorBuffer} />
       </div>
 
@@ -341,9 +372,8 @@
     margin: 0;
   }
 
-  /* The waveform fills the flexible middle of the editor panel */
+  /* The waveform has a measured height so the editor panel fits the viewport */
   .waveform-area {
-    flex: 1;
     width: 100%;
     max-width: 600px;
     background-color: #1a1a1a;
@@ -352,10 +382,10 @@
   }
 
   .editor-tile-preview {
-    width: 40vw;
-    height: 40vw;
-    max-width: 220px;
-    max-height: 220px;
+    width: 18vh;
+    height: 18vh;
+    max-width: 80px;
+    max-height: 80px;
     border-radius: 12px;
   }
 
