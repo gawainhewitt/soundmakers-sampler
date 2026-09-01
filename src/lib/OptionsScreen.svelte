@@ -101,14 +101,17 @@
     if (!dur) return;
 
     isPlaying = true;
-    cursor = 0;
+    // Reverse plays from the end of the trimmed region backwards, so the cursor
+    // travels from right to left (1 → 0) instead of left to right.
+    const backwards = reversed;
+    cursor = backwards ? 1 : 0;
     playStart = performance.now();
     playDuration = dur;
 
     function frame() {
-      const elapsed = (performance.now() - playStart) / 1000;
-      cursor = Math.min(1, elapsed / playDuration);
-      if (cursor >= 1) {
+      const t = Math.min(1, (performance.now() - playStart) / 1000 / playDuration);
+      cursor = backwards ? (1 - t) : t;
+      if (t >= 1) {
         stopPlayback();
         return;
       }
