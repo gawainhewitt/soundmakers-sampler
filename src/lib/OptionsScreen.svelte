@@ -472,6 +472,11 @@
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    line-height: 1;
   }
 
   .tile-count-option:hover {
