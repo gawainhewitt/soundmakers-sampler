@@ -202,7 +202,13 @@
     on:close={handleLoadClose}
   />
 {:else if currentScreen === 'save'}
-  <SaveScreen title="Save a Kit" on:close={handleSaveClose} />
+  <SaveScreen
+    title="Save a Kit"
+    {tileCount}
+    {tileStatuses}
+    getTileDuration={(i) => (samplerEngine ? samplerEngine.getTileDuration(i) : 0)}
+    on:close={handleSaveClose}
+  />
 {/if}
 
 <!-- Keep GridContainer always mounted so tileStatuses and samplerEngine state are preserved -->

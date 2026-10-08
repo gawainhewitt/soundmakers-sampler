@@ -473,6 +473,17 @@ export class SamplerEngine {
     return this.tiles[tileIndex] ? this.tiles[tileIndex].buffer : null;
   }
 
+  // Trimmed duration in seconds for a ready tile, or 0 if empty
+  getTileDuration(tileIndex) {
+    const tile = this.tiles[tileIndex];
+    if (!tile || !tile.buffer) return 0;
+    const start = (typeof tile.trimStart === 'number') ? tile.trimStart : 0;
+    const end = (typeof tile.trimEnd === 'number' && tile.trimEnd > 0)
+      ? tile.trimEnd
+      : tile.buffer.duration;
+    return Math.max(0, end - start);
+  }
+
   getTileCount() {
     return this.tiles.length;
   }
