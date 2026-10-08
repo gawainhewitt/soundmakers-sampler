@@ -43,6 +43,9 @@ export default defineConfig(({ command }) => {
     server: {
       host: true,
       https: localCerts || undefined,
+      proxy: {
+        '/wp-json': 'http://localhost:3001'
+      }
     },
     build: {
       outDir: 'dist',
