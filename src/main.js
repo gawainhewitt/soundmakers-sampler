@@ -2,6 +2,11 @@ import { mount } from 'svelte'
 import './app.css'
 import App from './App.svelte'
 
+// TEMP: remove after spike — dev-only MP3 encode test hook (window.__testEncode)
+if (import.meta.env.DEV) {
+  import('./lib/devTestEncode.js').then(({ registerTestEncode }) => registerTestEncode());
+}
+
 // Prevent all scrolling on iOS, while letting touch-draggable controls (such
 // as range sliders) still receive touchmove events.
 document.addEventListener('touchmove', function(e) {
