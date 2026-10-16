@@ -8,6 +8,7 @@
   import LoadScreen from './lib/LoadScreen.svelte';
   import SaveScreen from './lib/SaveScreen.svelte';
   import { SamplerEngine } from './lib/SamplerEngine.js';
+  import { saveKit as saveKitApi } from './lib/kitSaver.js';
 
   let currentScreen = 'splash';
   let samplerEngine = null;
@@ -207,6 +208,7 @@
     {tileCount}
     {tileStatuses}
     getTileDuration={(i) => (samplerEngine ? samplerEngine.getTileDuration(i) : 0)}
+    saveKit={(opts) => saveKitApi({ engine: samplerEngine, tileCount, tileStatuses, ...opts })}
     on:close={handleSaveClose}
   />
 {/if}

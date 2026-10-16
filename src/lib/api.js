@@ -136,3 +136,21 @@ export async function deleteSound(id) {
   const text = await res.text();
   return text ? JSON.parse(text) : { deleted: true, id };
 }
+
+// Create any item (sound or padset) with an arbitrary data payload. This is
+// separate from saveSound, which keeps its narrower behaviour unchanged.
+export async function createItem(body) {
+  await maybeMockError();
+
+  const res = await fetch(`${BASE}/items`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(await authHeaders()),
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw await apiError(res);
+  return res.json();
+}
