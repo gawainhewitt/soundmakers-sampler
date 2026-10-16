@@ -1,16 +1,8 @@
 // MP3 encoder wrapper — turns recorded audio into an MP3 Blob.
 //
-// The encoder library (@breezystack/lamejs) is loaded lazily via dynamic
-// import() so it is only fetched the first time encoding is called.
-
-let encoderModulePromise = null;
-
-function loadEncoder() {
-  if (!encoderModulePromise) {
-    encoderModulePromise = import('@breezystack/lamejs');
-  }
-  return encoderModulePromise;
-}
+// Encoding runs in a Web Worker (mp3Encoder.worker.js) so the main thread
+// stays responsive. The worker is created per call and terminated when the
+// call finishes (result or error), so workers are never leaked.
 
 // Convert Float32 samples (range -1..1) to Int16 PCM.
 function floatToInt16(samples) {
@@ -43,51 +35,26 @@ export async function encodeToMp3(samples, { sampleRate, channels = 1, bitrate =
     throw new Error('encodeToMp3: samples must be an Int16Array or Float32Array');
   }
 
-  let lame;
-  try {
-    lame = await loadEncoder();
-  } catch (error) {
-    throw new Error('encodeToMp3: failed to load MP3 encoder: ' + error.message);
-  }
-
-  let encoder;
-  try {
-    encoder = new lame.Mp3Encoder(channels, sampleRate, bitrate);
-  } catch (error) {
-    throw new Error('encodeToMp3: failed to create encoder: ' + error.message);
-  }
-
-  const BLOCK = 1152;
-  const chunks = [];
+  const worker = new Worker(new URL('./mp3Encoder.worker.js', import.meta.url), { type: 'module' });
 
   try {
-    if (channels === 1) {
-      for (let i = 0; i < pcm.length; i += BLOCK) {
-        const block = pcm.subarray(i, Math.min(i + BLOCK, pcm.length));
-        const out = encoder.encodeBuffer(block);
-        if (out.length > 0) chunks.push(out);
-      }
-    } else {
-      // Interleaved stereo: deinterleave into left/right blocks of BLOCK frames
-      const frames = Math.floor(pcm.length / 2);
-      const left = new Int16Array(BLOCK);
-      const right = new Int16Array(BLOCK);
-      for (let i = 0; i < frames; i += BLOCK) {
-        const n = Math.min(BLOCK, frames - i);
-        for (let j = 0; j < n; j++) {
-          left[j] = pcm[(i + j) * 2];
-          right[j] = pcm[(i + j) * 2 + 1];
+    const chunks = await new Promise((resolve, reject) => {
+      worker.onmessage = (event) => {
+        const data = event.data;
+        if (data && data.ok) {
+          resolve(data.chunks);
+        } else {
+          reject(new Error(data && data.error ? data.error : 'encodeToMp3: worker reported an error'));
         }
-        const out = encoder.encodeBuffer(left.subarray(0, n), right.subarray(0, n));
-        if (out.length > 0) chunks.push(out);
-      }
-    }
+      };
+      worker.onerror = (event) => {
+        reject(new Error('encodeToMp3: worker error: ' + (event.message || 'unknown')));
+      };
+      worker.postMessage({ samples: pcm, sampleRate, channels, bitrate });
+    });
 
-    const tail = encoder.flush();
-    if (tail.length > 0) chunks.push(tail);
-  } catch (error) {
-    throw new Error('encodeToMp3: encoding failed: ' + error.message);
+    return new Blob(chunks, { type: 'audio/mpeg' });
+  } finally {
+    worker.terminate();
   }
-
-  return new Blob(chunks, { type: 'audio/mpeg' });
 }
