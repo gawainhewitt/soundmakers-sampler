@@ -2,13 +2,15 @@
 // Web Audio API sampler — no dependencies, iOS 12 compatible
 // ScriptProcessorNode and micSource are created once and reused across recordings
 
+import { encodeToMp3 } from './mp3Encoder.js';
+
 export class SamplerEngine {
   constructor(tileCount) {
     this.audioContext = null;
     this.initialized = false;
 
     this.tiles = Array.from({ length: tileCount || 4 }, function() {
-      return { status: 'empty', buffer: null, trimStart: 0, trimEnd: 0, speed: 1, reverse: false, reversedBuffer: null, reverb: 0, delay: 0 };
+      return { status: 'empty', buffer: null, trimStart: 0, trimEnd: 0, speed: 1, reverse: false, reversedBuffer: null, reverb: 0, delay: 0, mp3: null, mp3Promise: null, mp3Error: null, recordingId: 0 };
     });
 
     this.activeSources = new Map();
@@ -110,6 +112,11 @@ export class SamplerEngine {
     this.recordingChunks = [];
     this.recordingTileIndex = tileIndex;
     this.recordingSampleRate = this.audioContext.sampleRate;
+    // A new recording starts: orphan any in-flight encode from the previous one
+    this.tiles[tileIndex].recordingId = (this.tiles[tileIndex].recordingId || 0) + 1;
+    this.tiles[tileIndex].mp3 = null;
+    this.tiles[tileIndex].mp3Promise = null;
+    this.tiles[tileIndex].mp3Error = null;
     this.tiles[tileIndex].status = 'recording';
     this.isCapturing = true;
 
@@ -155,6 +162,44 @@ export class SamplerEngine {
       this.tiles[tileIndex].delay = 0;
       this.tiles[tileIndex].reversedBuffer = null;
 
+      // ── Background MP3 encode (not awaited) ────────────────────────────────
+      // Encode the recorded Float32 samples to MP3 in a Web Worker. The result
+      // is stored on the tile only if no newer recording has replaced this one.
+      this.tiles[tileIndex].mp3 = null;
+      this.tiles[tileIndex].mp3Error = null;
+
+      var encodeId = this.tiles[tileIndex].recordingId;
+      var encodeSamples = pcmData; // Float32Array; encodeToMp3 converts internally
+      var encodeStart = (import.meta.env.DEV) ? performance.now() : 0;
+
+      this.tiles[tileIndex].mp3Promise = encodeToMp3(encodeSamples, {
+        sampleRate: this.recordingSampleRate,
+        channels: 1,
+      })
+        .then(function(blob) {
+          if (self.tiles[tileIndex] && self.tiles[tileIndex].recordingId === encodeId) {
+            self.tiles[tileIndex].mp3 = blob;
+          }
+
+          // TEMP: remove after encode test
+          if (import.meta.env.DEV) {
+            console.log(
+              'SamplerEngine: mp3 encode finished for tile', tileIndex,
+              'in', ((performance.now() - encodeStart) / 1000).toFixed(2) + 's',
+              'size:', blob.size, 'bytes'
+            );
+          }
+          // END TEMP
+          return blob;
+        })
+        .catch(function(error) {
+          var message = error && error.message ? error.message : String(error);
+          console.error('SamplerEngine: mp3 encode failed for tile', tileIndex, message);
+          if (self.tiles[tileIndex] && self.tiles[tileIndex].recordingId === encodeId) {
+            self.tiles[tileIndex].mp3Error = message;
+          }
+        });
+
       console.log(
         'SamplerEngine: recording stopped for tile', tileIndex,
         '— duration:', audioBuffer.duration.toFixed(2) + 's'
@@ -166,6 +211,10 @@ export class SamplerEngine {
     } catch (error) {
       console.error('SamplerEngine: failed to stop recording:', error);
       this.tiles[tileIndex].status = 'empty';
+      this.tiles[tileIndex].mp3 = null;
+      this.tiles[tileIndex].mp3Promise = null;
+      this.tiles[tileIndex].mp3Error = null;
+      this.tiles[tileIndex].recordingId = (this.tiles[tileIndex].recordingId || 0) + 1;
       this.recordingChunks = [];
       return false;
     }
@@ -423,6 +472,11 @@ export class SamplerEngine {
       tile.reverb = 0;
       tile.delay = 0;
       tile.reversedBuffer = null;
+      // A fresh sound replaces any previous recording: discard stale MP3 state
+      tile.mp3 = null;
+      tile.mp3Promise = null;
+      tile.mp3Error = null;
+      tile.recordingId = (tile.recordingId || 0) + 1;
 
       console.log('SamplerEngine: loaded tile', tileIndex, 'from', fileURL, '— duration:', audioBuffer.duration.toFixed(2) + 's');
       return true;
@@ -462,6 +516,10 @@ export class SamplerEngine {
     this.tiles[tileIndex].reverb = 0;
     this.tiles[tileIndex].delay = 0;
     this.tiles[tileIndex].reversedBuffer = null;
+    this.tiles[tileIndex].mp3 = null;
+    this.tiles[tileIndex].mp3Promise = null;
+    this.tiles[tileIndex].mp3Error = null;
+    this.tiles[tileIndex].recordingId = (this.tiles[tileIndex].recordingId || 0) + 1;
     console.log('SamplerEngine: cleared tile', tileIndex);
   }
 
@@ -484,6 +542,23 @@ export class SamplerEngine {
     return Math.max(0, end - start);
   }
 
+  // Returns a Promise<Blob> for the tile's MP3 encoding.
+  // - If the encode is already done, resolves immediately with the Blob.
+  // - If the encode is in flight, awaits it and resolves with the Blob.
+  // - Otherwise rejects with an error.
+  getTileMp3(tileIndex) {
+    const tile = this.tiles[tileIndex];
+    if (!tile) return Promise.reject(new Error('no such tile'));
+    if (tile.mp3) return Promise.resolve(tile.mp3);
+    if (tile.mp3Promise) {
+      return tile.mp3Promise.then(() => {
+        if (tile.mp3) return tile.mp3;
+        throw new Error(`no MP3 available for tile ${tileIndex}`);
+      });
+    }
+    return Promise.reject(new Error('there is no recording to encode'));
+  }
+
   getTileCount() {
     return this.tiles.length;
   }
@@ -499,7 +574,7 @@ export class SamplerEngine {
   setTileCount(count) {
     var self = this;
     var newTiles = Array.from({ length: count }, function(_, i) {
-      return self.tiles[i] || { status: 'empty', buffer: null, trimStart: 0, trimEnd: 0, speed: 1, reverse: false, reversedBuffer: null, reverb: 0, delay: 0 };
+      return self.tiles[i] || { status: 'empty', buffer: null, trimStart: 0, trimEnd: 0, speed: 1, reverse: false, reversedBuffer: null, reverb: 0, delay: 0, mp3: null, mp3Promise: null, mp3Error: null, recordingId: 0 };
     });
 
     // Stop any playback/recording that falls outside the new range
@@ -548,7 +623,12 @@ export class SamplerEngine {
 
     this.isCapturing = false;
     if (this.recordingTileIndex !== null) {
-      this.tiles[this.recordingTileIndex].status = 'empty';
+      var idx = this.recordingTileIndex;
+      this.tiles[idx].status = 'empty';
+      this.tiles[idx].mp3 = null;
+      this.tiles[idx].mp3Promise = null;
+      this.tiles[idx].mp3Error = null;
+      this.tiles[idx].recordingId = (this.tiles[idx].recordingId || 0) + 1;
       this.recordingTileIndex = null;
       this.recordingChunks = [];
     }
