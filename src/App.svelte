@@ -9,6 +9,7 @@
   import SaveScreen from './lib/SaveScreen.svelte';
   import { SamplerEngine } from './lib/SamplerEngine.js';
   import { saveKit as saveKitApi } from './lib/kitSaver.js';
+  import { loadKit as loadKitApi, listPadsets as listPadsetsApi } from './lib/kitLoader.js';
 
   let currentScreen = 'splash';
   let samplerEngine = null;
@@ -200,6 +201,8 @@
     title="Load a Kit"
     {tileCount}
     loadTile={(url, i) => (samplerEngine ? samplerEngine.loadTileFromUrl(url, i) : false)}
+    loadKit={(opts) => loadKitApi({ engine: samplerEngine, ...opts })}
+    listPadsets={listPadsetsApi}
     on:close={handleLoadClose}
   />
 {:else if currentScreen === 'save'}

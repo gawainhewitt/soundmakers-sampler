@@ -449,15 +449,25 @@ export class SamplerEngine {
   // Load an audio file (URL) into a tile, decoding it and marking the tile ready.
   // Reuses the normal tile path, so trim/speed/reverse/reverb/delay all apply.
   async loadTileFromUrl(fileURL, tileIndex) {
+    try {
+      var response = await fetch(fileURL);
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      var arrayBuffer = await response.arrayBuffer();
+      return await this.loadTileFromArrayBuffer(arrayBuffer, tileIndex);
+    } catch (error) {
+      console.error('SamplerEngine: failed to load', fileURL, 'into tile', tileIndex, error);
+      return false;
+    }
+  }
+
+  // Load already-fetched audio bytes into a tile, decoding and marking it ready.
+  // Resets trim/speed/reverse/reverb/delay to defaults (apply settings after).
+  async loadTileFromArrayBuffer(arrayBuffer, tileIndex) {
     var tile = this.tiles[tileIndex];
     if (!tile) return false;
 
     try {
       var self = this;
-      var response = await fetch(fileURL);
-      if (!response.ok) throw new Error('HTTP ' + response.status);
-      var arrayBuffer = await response.arrayBuffer();
-
       var audioBuffer = await new Promise(function(resolve, reject) {
         self.audioContext.decodeAudioData(arrayBuffer, resolve, reject);
       });
@@ -478,10 +488,10 @@ export class SamplerEngine {
       tile.mp3Error = null;
       tile.recordingId = (tile.recordingId || 0) + 1;
 
-      console.log('SamplerEngine: loaded tile', tileIndex, 'from', fileURL, '— duration:', audioBuffer.duration.toFixed(2) + 's');
+      console.log('SamplerEngine: loaded tile', tileIndex, '— duration:', audioBuffer.duration.toFixed(2) + 's');
       return true;
     } catch (error) {
-      console.error('SamplerEngine: failed to load', fileURL, 'into tile', tileIndex, error);
+      console.error('SamplerEngine: failed to load bytes into tile', tileIndex, error);
       return false;
     }
   }

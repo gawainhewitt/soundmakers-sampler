@@ -137,6 +137,17 @@ export async function deleteSound(id) {
   return text ? JSON.parse(text) : { deleted: true, id };
 }
 
+// Fetch a file's raw bytes (e.g. an audio file URL from an item's files[]).
+// Uses authHeaders() so the dev mock accepts it.
+export async function fetchFileBytes(fileUrl) {
+  const res = await fetch(fileUrl, {
+    credentials: 'include',
+    headers: await authHeaders(),
+  });
+  if (!res.ok) throw await apiError(res);
+  return res.arrayBuffer();
+}
+
 // Create any item (sound or padset) with an arbitrary data payload. This is
 // separate from saveSound, which keeps its narrower behaviour unchanged.
 export async function createItem(body) {
