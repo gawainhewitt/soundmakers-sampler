@@ -14,6 +14,8 @@
   export let listPadsets = async () => [];
   // deleteKit({ padset }) -> Promise<{ deletedSounds, skippedShared, errors }>
   export let deleteKit = async (opts) => ({ deletedSounds: [], skippedShared: 0, errors: [] });
+  // renameKit({ padset, title }) -> Promise<item>
+  export let renameKit = async (opts) => ({});
 
   const KIT_FOLDER = '/kits/testkit/';
   const KIT_SIZE = 8; // up to 8 one-shot sounds in a test kit
@@ -27,6 +29,9 @@
   let kitLoadingId = null;
   let kitError = '';
   let deletingId = null;
+  let renamingId = null;
+  let renameValue = '';
+  let renameBusy = false;
 
   async function handleLoadKit() {
     if (loading) return;
@@ -78,6 +83,50 @@
     }
   }
 
+  function startRename(padset) {
+    if (renamingId !== null || renamingId === padset.id) return;
+    renamingId = padset.id;
+    renameValue = padset.title || '';
+    renameBusy = false;
+    kitError = '';
+    // Focus the input after it renders
+    requestAnimationFrame(() => {
+      const input = document.querySelector('.rename-input');
+      if (input instanceof HTMLElement) input.focus();
+    });
+  }
+
+  function cancelRename() {
+    renamingId = null;
+    renameBusy = false;
+  }
+
+  async function saveRename(padset) {
+    if (renameBusy) return;
+    renameBusy = true;
+    kitError = '';
+    try {
+      const updated = await renameKit({ padset, title: renameValue });
+      // Update the list title in place, then close the input
+      padsets = padsets.map((p) => (p.id === padset.id ? { ...p, title: updated.title } : p));
+      renamingId = null;
+    } catch (err) {
+      kitError = (err && err.message) ? err.message : String(err);
+    } finally {
+      renameBusy = false;
+    }
+  }
+
+  function handleRenameKeydown(e, padset) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      saveRename(padset);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelRename();
+    }
+  }
+
   function formatDate(iso) {
     if (!iso) return '';
     try {
@@ -101,6 +150,9 @@
   }
 
   function handleKeydown(e) {
+    // Don't close the screen while typing in the rename input
+    const tag = e.target && e.target.tagName ? e.target.tagName.toLowerCase() : '';
+    if (tag === 'input' || tag === 'textarea') return;
     if (e.key === 'Enter' || e.key === 'Escape') handleClose();
   }
 
@@ -144,26 +196,64 @@
       {#each padsets as padset}
         <div class="kit-item">
           <div class="kit-info">
-            <span class="kit-name">{padset.title || 'Untitled'}</span>
+            {#if renamingId === padset.id}
+              <input
+                class="rename-input"
+                type="text"
+                bind:value={renameValue}
+                on:keydown={(e) => handleRenameKeydown(e, padset)}
+                disabled={renameBusy}
+                maxlength="100"
+              />
+            {:else}
+              <span class="kit-name">{padset.title || 'Untitled'}</span>
+            {/if}
             <span class="kit-meta">{formatDate(padset.updatedAt || padset.createdAt)}</span>
           </div>
           <div class="kit-actions">
-            <button
-              class="load-button"
-              on:click={() => handleLoadServerKit(padset)}
-              disabled={kitLoadingId !== null || deletingId !== null}
-              type="button"
-            >
-              {kitLoadingId === padset.id ? 'Loading…' : 'Load'}
-            </button>
-            <button
-              class="delete-button"
-              on:click={() => handleDeleteServerKit(padset)}
-              disabled={kitLoadingId !== null || deletingId !== null}
-              type="button"
-            >
-              {deletingId === padset.id ? 'Deleting…' : 'Delete'}
-            </button>
+            {#if renamingId === padset.id}
+              <button
+                class="delete-button rename-save"
+                on:click={() => saveRename(padset)}
+                disabled={renameBusy}
+                type="button"
+              >
+                {renameBusy ? 'Saving…' : 'Save'}
+              </button>
+              <button
+                class="delete-button"
+                on:click={cancelRename}
+                disabled={renameBusy}
+                type="button"
+              >
+                Cancel
+              </button>
+            {:else}
+              <button
+                class="load-button"
+                on:click={() => handleLoadServerKit(padset)}
+                disabled={kitLoadingId !== null || deletingId !== null || renamingId !== null}
+                type="button"
+              >
+                {kitLoadingId === padset.id ? 'Loading…' : 'Load'}
+              </button>
+              <button
+                class="delete-button"
+                on:click={() => handleDeleteServerKit(padset)}
+                disabled={kitLoadingId !== null || deletingId !== null || renamingId !== null}
+                type="button"
+              >
+                {deletingId === padset.id ? 'Deleting…' : 'Delete'}
+              </button>
+              <button
+                class="delete-button"
+                on:click={() => startRename(padset)}
+                disabled={kitLoadingId !== null || deletingId !== null || renamingId !== null}
+                type="button"
+              >
+                Rename
+              </button>
+            {/if}
           </div>
         </div>
       {/each}
@@ -202,7 +292,7 @@
 
   .kit-list {
     width: 100%;
-    max-width: 360px;
+    max-width: 420px;
     display: flex;
     flex-direction: column;
     gap: 1rem;
@@ -218,15 +308,16 @@
 
   .kit-item {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
     padding: 0.75rem 1rem;
     border: 2px solid #eee;
     border-radius: 12px;
   }
 
   .kit-info {
+    width: 100%;
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
@@ -237,14 +328,23 @@
     font-size: 1.1rem;
     font-weight: 600;
     color: #333;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    word-break: break-word;
+  }
+
+  .rename-input {
+    width: 100%;
+    padding: 0.4rem 0.6rem;
+    font-size: 1rem;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    color: #333;
+    box-sizing: border-box;
   }
 
   .kit-meta {
     font-size: 0.85rem;
     color: #999;
+    white-space: nowrap;
   }
 
   .kit-error {
@@ -267,16 +367,17 @@
 
   .kit-actions {
     display: flex;
+    justify-content: flex-start;
+    align-items: center;
     gap: 0.5rem;
-    flex-shrink: 0;
   }
 
   .delete-button {
     background-color: #e0e0e0;
     color: #333;
     border: none;
-    padding: 0.6rem 1rem;
-    font-size: 0.9rem;
+    padding: 0.5rem 0.9rem;
+    font-size: 0.85rem;
     font-weight: 600;
     border-radius: 50px;
     cursor: pointer;
@@ -286,6 +387,11 @@
   .delete-button[disabled] {
     opacity: 0.6;
     cursor: default;
+  }
+
+  .rename-save {
+    background-color: #06C0F0;
+    color: white;
   }
 
   .load-button[disabled] {

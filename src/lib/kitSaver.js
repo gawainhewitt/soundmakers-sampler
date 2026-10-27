@@ -1,7 +1,7 @@
 // Saves the current kit to the server: each ready pad becomes a 'sound' item,
 // and one 'padset' item references them.
 
-import { uploadFile, createItem, deleteSound, fetchFileBytes, authHeaders, fileUrlFor } from './api.js';
+import { uploadFile, createItem, updateItem, deleteSound, fetchFileBytes, authHeaders, fileUrlFor } from './api.js';
 import { listPadsets } from './kitLoader.js';
 import { SQUARE_COLORS } from './tileConfig.js';
 
@@ -221,4 +221,25 @@ export async function deleteKit({ padset }) {
   }
 
   return result;
+}
+
+/**
+ * Rename a saved kit (padset). Only the title is sent, so the kit's sounds are
+ * left untouched.
+ *
+ * @param {{ padset: object, title: string }} opts - padset from listPadsets().
+ * @returns {Promise<object>} the updated item from the server.
+ */
+export async function renameKit({ padset, title }) {
+  if (!padset || !padset.id) {
+    throw new Error('renameKit: padset is required');
+  }
+
+  const trimmed = String(title == null ? '' : title).trim();
+  if (trimmed === '') {
+    throw new Error('Kit name cannot be empty');
+  }
+
+  const cappedTitle = trimmed.slice(0, 100);
+  return updateItem(padset.id, { title: cappedTitle });
 }

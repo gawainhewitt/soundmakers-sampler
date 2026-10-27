@@ -8,7 +8,7 @@
   import LoadScreen from './lib/LoadScreen.svelte';
   import SaveScreen from './lib/SaveScreen.svelte';
   import { SamplerEngine } from './lib/SamplerEngine.js';
-  import { saveKit as saveKitApi, deleteKit as deleteKitApi } from './lib/kitSaver.js';
+  import { saveKit as saveKitApi, deleteKit as deleteKitApi, renameKit as renameKitApi } from './lib/kitSaver.js';
   import { loadKit as loadKitApi, listPadsets as listPadsetsApi } from './lib/kitLoader.js';
 
   let currentScreen = 'splash';
@@ -202,6 +202,7 @@
     loadKit={(opts) => loadKitApi({ engine: samplerEngine, ...opts })}
     listPadsets={listPadsetsApi}
     deleteKit={(padset) => deleteKitApi({ padset })}
+    renameKit={(opts) => renameKitApi(opts)}
     on:close={handleLoadClose}
   />
 {:else if currentScreen === 'save'}
