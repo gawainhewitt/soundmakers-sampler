@@ -12,6 +12,8 @@
   export let loadKit = async (opts) => ({ loaded: 0, skipped: 0, errors: [] });
   // listPadsets() -> Promise<Item[]> (server kits)
   export let listPadsets = async () => [];
+  // deleteKit({ padset }) -> Promise<{ deletedSounds, skippedShared, errors }>
+  export let deleteKit = async (opts) => ({ deletedSounds: [], skippedShared: 0, errors: [] });
 
   const KIT_FOLDER = '/kits/testkit/';
   const KIT_SIZE = 8; // up to 8 one-shot sounds in a test kit
@@ -24,6 +26,7 @@
   let padsetsError = '';
   let kitLoadingId = null;
   let kitError = '';
+  let deletingId = null;
 
   async function handleLoadKit() {
     if (loading) return;
@@ -53,6 +56,25 @@
     } catch (err) {
       kitError = (err && err.message) ? err.message : String(err);
       kitLoadingId = null;
+    }
+  }
+
+  async function handleDeleteServerKit(padset) {
+    if (deletingId !== null) return;
+    const title = padset.title || 'Untitled';
+    if (!window.confirm(`Delete "${title}"? This cannot be undone.`)) return;
+
+    deletingId = padset.id;
+    kitError = '';
+
+    try {
+      await deleteKit(padset);
+      // Remove it from the list so it disappears without a reload
+      padsets = padsets.filter((p) => p.id !== padset.id);
+    } catch (err) {
+      kitError = (err && err.message) ? err.message : String(err);
+    } finally {
+      deletingId = null;
     }
   }
 
@@ -125,14 +147,24 @@
             <span class="kit-name">{padset.title || 'Untitled'}</span>
             <span class="kit-meta">{formatDate(padset.updatedAt || padset.createdAt)}</span>
           </div>
-          <button
-            class="load-button"
-            on:click={() => handleLoadServerKit(padset)}
-            disabled={kitLoadingId !== null}
-            type="button"
-          >
-            {kitLoadingId === padset.id ? 'Loading…' : 'Load'}
-          </button>
+          <div class="kit-actions">
+            <button
+              class="load-button"
+              on:click={() => handleLoadServerKit(padset)}
+              disabled={kitLoadingId !== null || deletingId !== null}
+              type="button"
+            >
+              {kitLoadingId === padset.id ? 'Loading…' : 'Load'}
+            </button>
+            <button
+              class="delete-button"
+              on:click={() => handleDeleteServerKit(padset)}
+              disabled={kitLoadingId !== null || deletingId !== null}
+              type="button"
+            >
+              {deletingId === padset.id ? 'Deleting…' : 'Delete'}
+            </button>
+          </div>
         </div>
       {/each}
     {/if}
@@ -231,6 +263,29 @@
     border-radius: 50px;
     cursor: pointer;
     flex-shrink: 0;
+  }
+
+  .kit-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-shrink: 0;
+  }
+
+  .delete-button {
+    background-color: #e0e0e0;
+    color: #333;
+    border: none;
+    padding: 0.6rem 1rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    border-radius: 50px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .delete-button[disabled] {
+    opacity: 0.6;
+    cursor: default;
   }
 
   .load-button[disabled] {

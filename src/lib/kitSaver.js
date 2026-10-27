@@ -1,7 +1,8 @@
 // Saves the current kit to the server: each ready pad becomes a 'sound' item,
 // and one 'padset' item references them.
 
-import { uploadFile, createItem, fetchFileBytes, authHeaders, fileUrlFor } from './api.js';
+import { uploadFile, createItem, deleteSound, fetchFileBytes, authHeaders, fileUrlFor } from './api.js';
+import { listPadsets } from './kitLoader.js';
 import { SQUARE_COLORS } from './tileConfig.js';
 
 const BASE = import.meta.env.VITE_API_BASE || '/api';
@@ -159,6 +160,64 @@ export async function saveKit({ engine, tileCount, tileStatuses, onPadStatus, ti
     result.padsetId = padset.id;
   } catch (err) {
     result.padsetError = err && err.message ? err.message : String(err);
+  }
+
+  return result;
+}
+
+/**
+ * Delete a saved kit (padset) and its sounds, unless a sound is shared with
+ * another remaining padset.
+ *
+ * @param {{ padset: object }} opts - padset from listPadsets() with id and
+ *   data.soundIds.
+ * @returns {Promise<{ deletedSounds: number[], skippedShared: number, errors: string[] }>}
+ */
+export async function deleteKit({ padset }) {
+  const result = { deletedSounds: [], skippedShared: 0, errors: [] };
+
+  if (!padset || !padset.id) {
+    throw new Error('deleteKit: padset is required');
+  }
+
+  // 1. Delete the padset first. If this fails, stop and delete nothing else.
+  await deleteSound(padset.id);
+
+  const soundIds = Array.isArray(padset.data && padset.data.soundIds)
+    ? padset.data.soundIds.filter((id) => id !== null && id !== undefined)
+    : [];
+  if (soundIds.length === 0) {
+    return result;
+  }
+
+  // 2. After the padset is gone, find sounds still used by other padsets.
+  const stillUsed = new Set();
+  try {
+    const remainingPadsets = await listPadsets();
+    for (const other of remainingPadsets) {
+      const ids = Array.isArray(other.data && other.data.soundIds) ? other.data.soundIds : [];
+      for (const id of ids) {
+        if (id !== null && id !== undefined) stillUsed.add(id);
+      }
+    }
+  } catch (err) {
+    // Can't tell what's still used — be conservative and keep all the sounds.
+    result.errors.push(`deleteKit: could not list remaining kits: ${err && err.message ? err.message : String(err)}`);
+    return result;
+  }
+
+  // 3. Delete each sound that no other padset references.
+  for (const soundId of soundIds) {
+    if (stillUsed.has(soundId)) {
+      result.skippedShared++;
+      continue;
+    }
+    try {
+      await deleteSound(soundId);
+      result.deletedSounds.push(soundId);
+    } catch (err) {
+      result.errors.push(`deleteKit: could not delete sound ${soundId}: ${err && err.message ? err.message : String(err)}`);
+    }
   }
 
   return result;
