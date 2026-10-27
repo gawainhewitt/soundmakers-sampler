@@ -25,7 +25,7 @@ async function apiError(res) {
 }
 
 // Fetch a single item by id.
-async function getItem(id) {
+export async function getItem(id) {
   const res = await fetch(`${BASE}/items/${id}`, {
     credentials: 'include',
     headers: await authHeaders(),

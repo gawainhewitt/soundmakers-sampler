@@ -56,8 +56,12 @@
 
     try {
       const result = await loadKit({ padsetId: padset.id, tileCount });
-      // Close so App.svelte updates tileStatuses from the engine
-      dispatch('close', { loaded: result.loaded });
+      // Close so App.svelte updates tileStatuses and currentKit.
+      dispatch('close', {
+        loaded: result.loaded,
+        padsetId: padset.id,
+        title: padset.title || '',
+      });
     } catch (err) {
       kitError = (err && err.message) ? err.message : String(err);
       kitLoadingId = null;

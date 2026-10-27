@@ -7,9 +7,11 @@
   export let title = 'Save a Kit';
   export let tileCount = 4;
   export let tileStatuses = Array(4).fill('empty');
+  // The kit currently loaded/created, { id, title } or null.
+  export let currentKit = null;
   // getTileDuration(tileIndex) -> seconds (trimmed), 0 if empty
   export let getTileDuration = (tileIndex) => 0;
-  // saveKit({ onPadStatus, title? }) -> Promise<{ soundIds, padsFailed, padsetId?, padsetError? }>
+  // saveKit({ onPadStatus, title?, padsetId? }) -> Promise<{ soundIds, padsFailed, padsetId?, padsetError? }>
   export let saveKit = async (opts) => ({
     soundIds: [],
     padsFailed: [],
@@ -23,8 +25,10 @@
   let lastPadsetId = null;
   let saveMessage = '';
 
-  // Kit name for the padset title, defaulting to Kit <date> like today.
+  // Kit name for Save As, defaulting to Kit <date> like today.
   let kitName = 'Kit ' + new Date().toLocaleString();
+  // Show the name field (Save As mode): true while naming a new kit.
+  let showNameField = false;
 
   const readyCount = tileStatuses.filter((s) => s === 'ready').length;
   const anyReady = readyCount > 0;
@@ -38,19 +42,15 @@
     padProgress = { ...padProgress, [index]: { state, message } };
   }
 
-  async function handleSave() {
-    if (isSaving || !anyReady) return;
-
+  async function runSave(opts) {
     isSaving = true;
     saveMessage = '';
     lastPadsetId = null;
     padProgress = {};
 
     try {
-      // Pass the trimmed name; undefined when empty so kitSaver uses its default.
-      const trimmedName = kitName.trim();
       const result = await saveKit({
-        title: trimmedName !== '' ? trimmedName : undefined,
+        ...opts,
         onPadStatus: (index, state, message) => setPadProgress(index, state, message),
       });
       if (result.padsetId) lastPadsetId = result.padsetId;
@@ -59,11 +59,50 @@
       } else {
         saveMessage = 'Saved';
       }
+
+      return result;
     } catch (err) {
-      saveMessage = (err && err.message) ? err.message : String(err);
+      const message = (err && err.message) ? err.message : String(err);
+      saveMessage = message;
+
+      // If the kit we were overwriting is gone, offer Save As prefilled
+      if (message === 'Kit no longer exists on the server') {
+        kitName = (currentKit && currentKit.title) ? currentKit.title : 'Kit ' + new Date().toLocaleString();
+        showNameField = true;
+      }
+
+      return null;
     } finally {
       isSaving = false;
     }
+  }
+
+  async function handleSave() {
+    if (isSaving || !anyReady || !currentKit) return;
+    const result = await runSave({ padsetId: currentKit.id });
+    // Overwrite keeps currentKit; the app doesn't need a new reference
+    return result;
+  }
+
+  async function handleSaveAs() {
+    if (isSaving || !anyReady) return;
+    const trimmedName = kitName.trim();
+    const result = await runSave({
+      title: trimmedName !== '' ? trimmedName : undefined,
+    });
+    // On success, tell the app which padset was created so it becomes the
+    // current kit.
+    if (result && result.padsetId) {
+      dispatch('saved', {
+        padsetId: result.padsetId,
+        title: trimmedName !== '' ? trimmedName : '',
+      });
+    }
+  }
+
+  function openSaveAs() {
+    if (isSaving) return;
+    showNameField = true;
   }
 
   function handleClose() {
@@ -132,31 +171,60 @@
     {/each}
   </div>
 
+  {#if currentKit}
+    <p class="saving-to">Saving to: {currentKit.title || 'Untitled'}</p>
+  {/if}
+
   {#if saveMessage}
     <p class="save-message">{saveMessage}</p>
   {/if}
 
-  <div class="kit-name-field">
-    <label class="kit-name-label" for="kit-name-input">Kit name</label>
-    <input
-      id="kit-name-input"
-      class="kit-name-input"
-      type="text"
-      bind:value={kitName}
-      maxlength="100"
-      disabled={isSaving}
-    />
-  </div>
+  {#if showNameField}
+    <div class="kit-name-field">
+      <label class="kit-name-label" for="kit-name-input">Kit name</label>
+      <input
+        id="kit-name-input"
+        class="kit-name-input"
+        type="text"
+        bind:value={kitName}
+        maxlength="100"
+        disabled={isSaving}
+      />
+    </div>
+  {/if}
 
   <div class="button-row">
-    <button
-      class="close-button"
-      on:click={handleSave}
-      disabled={isSaving || !anyReady}
-      type="button"
-    >
-      {isSaving ? 'Saving…' : 'Save kit'}
-    </button>
+    {#if currentKit && !showNameField}
+      <button
+        class="close-button"
+        on:click={handleSave}
+        disabled={isSaving || !anyReady}
+        type="button"
+      >
+        {isSaving ? 'Saving…' : 'Save'}
+      </button>
+    {/if}
+
+    {#if currentKit && !showNameField}
+      <button
+        class="close-button secondary"
+        on:click={openSaveAs}
+        disabled={isSaving || !anyReady}
+        type="button"
+      >
+        Save As
+      </button>
+    {:else}
+      <button
+        class="close-button"
+        on:click={handleSaveAs}
+        disabled={isSaving || !anyReady}
+        type="button"
+      >
+        {isSaving ? 'Saving…' : 'Save As'}
+      </button>
+    {/if}
+
     <button class="close-button secondary" on:click={handleClose} type="button">Close</button>
   </div>
 </div>
@@ -292,6 +360,12 @@
   .save-message {
     font-size: 1rem;
     color: #333;
+    margin: 0;
+  }
+
+  .saving-to {
+    font-size: 1.1rem;
+    color: #555;
     margin: 0;
   }
 

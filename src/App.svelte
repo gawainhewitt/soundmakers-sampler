@@ -26,6 +26,11 @@
   // 'empty' | 'recording' | 'ready'
   let tileStatuses = Array(tileCount).fill('empty');
 
+  // The kit currently loaded/created, { id, title } or null. Set when a kit
+  // loads or a new padset is created; kept across overwrites. Never cleared
+  // on recording or closing screens.
+  let currentKit = null;
+
   onMount(() => {
     samplerEngine = new SamplerEngine(tileCount);
   });
@@ -85,7 +90,7 @@
     currentScreen = 'save';
   }
 
-  function handleLoadClose() {
+  function handleLoadClose(event) {
     document.body.style.setProperty('background-color', '#000', 'important');
     currentScreen = 'play';
 
@@ -95,12 +100,27 @@
       );
     }
 
+    // Track the loaded kit so Save can overwrite it
+    const detail = event && event.detail ? event.detail : {};
+    if (detail.padsetId) {
+      currentKit = { id: detail.padsetId, title: detail.title || '' };
+    }
+
     setTimeout(() => {
       window.scrollTo(0, 0);
       const vh = window.innerHeight * 0.01;
       document.documentElement.style.setProperty('--vh', `${vh}px`);
       window.dispatchEvent(new Event('resize'));
     }, 100);
+  }
+
+  // Called by SaveScreen when a save created a new padset (Save As),
+  // so the current kit follows the new padset.
+  function handleKitSaved(event) {
+    const detail = event && event.detail ? event.detail : {};
+    if (detail.padsetId) {
+      currentKit = { id: detail.padsetId, title: detail.title || '' };
+    }
   }
 
   function handleSaveClose() {
@@ -210,8 +230,10 @@
     title="Save a Kit"
     {tileCount}
     {tileStatuses}
+    {currentKit}
     getTileDuration={(i) => (samplerEngine ? samplerEngine.getTileDuration(i) : 0)}
     saveKit={(opts) => saveKitApi({ engine: samplerEngine, tileCount, tileStatuses, ...opts })}
+    on:saved={handleKitSaved}
     on:close={handleSaveClose}
   />
 {/if}
