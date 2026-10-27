@@ -41,7 +41,15 @@ export async function getNonce() {
   return res.text();
 }
 
-async function authHeaders() {
+const DEV_USER = import.meta.env.VITE_API_USER;
+const DEV_APP_PASSWORD = import.meta.env.VITE_API_APP_PASSWORD;
+const USE_APP_PASSWORD = import.meta.env.DEV && !!DEV_USER && !!DEV_APP_PASSWORD;
+
+export async function authHeaders() {
+  if (USE_APP_PASSWORD) {
+    const token = btoa(`${DEV_USER}:${DEV_APP_PASSWORD}`);
+    return { Authorization: `Basic ${token}` };
+  }
   if (!nonce) nonce = await getNonce();
   return { 'X-WP-Nonce': nonce };
 }
@@ -181,4 +189,11 @@ export async function createItem(body) {
   });
   if (!res.ok) throw await apiError(res);
   return res.json();
+}
+
+export function fileUrlFor(fileId, serverUrl) {
+  if (import.meta.env.DEV && import.meta.env.VITE_API_APP_PASSWORD) {
+    return `${BASE}/files/${fileId}/content`;
+  }
+  return serverUrl;
 }

@@ -29,6 +29,6 @@ dist-ssr
 .netlify
 
 .env.development
-.env.local
+.env.development.local
 
 *.pem

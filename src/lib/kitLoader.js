@@ -1,6 +1,6 @@
 // Loads a saved kit (padset) from the server into the engine.
 
-import { fetchFileBytes } from './api.js';
+import { fetchFileBytes, authHeaders, fileUrlFor } from './api.js';
 
 const BASE = import.meta.env.VITE_API_BASE || '/api';
 
@@ -8,22 +8,6 @@ const BASE = import.meta.env.VITE_API_BASE || '/api';
 const BASE_ORIGIN = BASE.startsWith('http')
   ? BASE.replace(/\/wp-json\/orchlab-sampler\/v1$/, '')
   : '';
-
-let nonce = null;
-
-async function getNonce() {
-  if (import.meta.env.DEV) return 'mock-nonce';
-  const res = await fetch(`${BASE_ORIGIN}/wp-admin/admin-ajax.php?action=rest-nonce`, {
-    credentials: 'include',
-  });
-  if (!res.ok) throw new Error(`nonce failed: ${res.status}`);
-  return res.text();
-}
-
-async function authHeaders() {
-  if (!nonce) nonce = await getNonce();
-  return { 'X-WP-Nonce': nonce };
-}
 
 async function apiError(res) {
   let body = {};
@@ -117,7 +101,7 @@ export async function loadKit({ engine, padsetId, tileCount }) {
         continue;
       }
 
-      const bytes = await fetchFileBytes(file.url);
+      const bytes = await fetchFileBytes(fileUrlFor(audioFileId, file.url));
       const ok = await engine.loadTileFromArrayBuffer(bytes, index);
       if (!ok) {
         result.errors.push(`Pad ${index + 1}: could not decode audio`);
