@@ -148,6 +148,23 @@ export async function fetchFileBytes(fileUrl) {
   return res.arrayBuffer();
 }
 
+// Update an item (PATCH). data and fileIds replace the stored value entirely.
+export async function updateItem(id, body) {
+  await maybeMockError();
+
+  const res = await fetch(`${BASE}/items/${id}`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(await authHeaders()),
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw await apiError(res);
+  return res.json();
+}
+
 // Create any item (sound or padset) with an arbitrary data payload. This is
 // separate from saveSound, which keeps its narrower behaviour unchanged.
 export async function createItem(body) {

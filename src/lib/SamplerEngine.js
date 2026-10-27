@@ -10,7 +10,7 @@ export class SamplerEngine {
     this.initialized = false;
 
     this.tiles = Array.from({ length: tileCount || 4 }, function() {
-      return { status: 'empty', buffer: null, trimStart: 0, trimEnd: 0, speed: 1, reverse: false, reversedBuffer: null, reverb: 0, delay: 0, mp3: null, mp3Promise: null, mp3Error: null, recordingId: 0 };
+      return { status: 'empty', buffer: null, trimStart: 0, trimEnd: 0, speed: 1, reverse: false, reversedBuffer: null, reverb: 0, delay: 0, mp3: null, mp3Promise: null, mp3Error: null, recordingId: 0, serverSoundId: null, serverFileId: null };
     });
 
     this.activeSources = new Map();
@@ -117,6 +117,9 @@ export class SamplerEngine {
     this.tiles[tileIndex].mp3 = null;
     this.tiles[tileIndex].mp3Promise = null;
     this.tiles[tileIndex].mp3Error = null;
+    // A fresh recording is no longer the server-loaded sound
+    this.tiles[tileIndex].serverSoundId = null;
+    this.tiles[tileIndex].serverFileId = null;
     this.tiles[tileIndex].status = 'recording';
     this.isCapturing = true;
 
@@ -529,6 +532,8 @@ export class SamplerEngine {
     this.tiles[tileIndex].mp3 = null;
     this.tiles[tileIndex].mp3Promise = null;
     this.tiles[tileIndex].mp3Error = null;
+    this.tiles[tileIndex].serverSoundId = null;
+    this.tiles[tileIndex].serverFileId = null;
     this.tiles[tileIndex].recordingId = (this.tiles[tileIndex].recordingId || 0) + 1;
     console.log('SamplerEngine: cleared tile', tileIndex);
   }
@@ -573,6 +578,27 @@ export class SamplerEngine {
     return this.tiles.length;
   }
 
+  // Record that a tile's sound came from the server (used by the save flow to
+  // PATCH the existing item instead of re-uploading).
+  markTileFromServer(tileIndex, { soundId, fileId }) {
+    var tile = this.tiles[tileIndex];
+    if (!tile) return false;
+    tile.serverSoundId = soundId || null;
+    tile.serverFileId = fileId || null;
+    return true;
+  }
+
+  // Returns { soundId, fileId } if the tile holds a server-loaded sound, or
+  // { soundId: null, fileId: null } if it was recorded locally.
+  getServerRef(tileIndex) {
+    var tile = this.tiles[tileIndex];
+    if (!tile) return { soundId: null, fileId: null };
+    return {
+      soundId: tile.serverSoundId || null,
+      fileId: tile.serverFileId || null,
+    };
+  }
+
   getTrim(tileIndex) {
     const tile = this.tiles[tileIndex];
     if (!tile || !tile.buffer) return [0, 0];
@@ -584,7 +610,7 @@ export class SamplerEngine {
   setTileCount(count) {
     var self = this;
     var newTiles = Array.from({ length: count }, function(_, i) {
-      return self.tiles[i] || { status: 'empty', buffer: null, trimStart: 0, trimEnd: 0, speed: 1, reverse: false, reversedBuffer: null, reverb: 0, delay: 0, mp3: null, mp3Promise: null, mp3Error: null, recordingId: 0 };
+      return self.tiles[i] || { status: 'empty', buffer: null, trimStart: 0, trimEnd: 0, speed: 1, reverse: false, reversedBuffer: null, reverb: 0, delay: 0, mp3: null, mp3Promise: null, mp3Error: null, recordingId: 0, serverSoundId: null, serverFileId: null };
     });
 
     // Stop any playback/recording that falls outside the new range
@@ -638,6 +664,8 @@ export class SamplerEngine {
       this.tiles[idx].mp3 = null;
       this.tiles[idx].mp3Promise = null;
       this.tiles[idx].mp3Error = null;
+      this.tiles[idx].serverSoundId = null;
+      this.tiles[idx].serverFileId = null;
       this.tiles[idx].recordingId = (this.tiles[idx].recordingId || 0) + 1;
       this.recordingTileIndex = null;
       this.recordingChunks = [];

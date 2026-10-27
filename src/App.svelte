@@ -85,17 +85,15 @@
     currentScreen = 'save';
   }
 
-  function handleLoadClose(event) {
+  function handleLoadClose() {
     document.body.style.setProperty('background-color', '#000', 'important');
     currentScreen = 'play';
 
-    // Reflect any kit sounds now held by the engine in the tile statuses
-    const loaded = (event && event.detail && event.detail.loaded) || 0;
-    const limit = Math.min(loaded, tileStatuses.length, samplerEngine ? samplerEngine.getTileCount() : 0);
-    for (let i = 0; i < limit; i++) {
-      tileStatuses[i] = samplerEngine.getTileStatus(i);
+    if (samplerEngine) {
+      tileStatuses = Array.from({ length: tileCount }, (_, i) =>
+        samplerEngine.getTileStatus(i) || 'empty'
+      );
     }
-    if (limit > 0) tileStatuses = [...tileStatuses];
 
     setTimeout(() => {
       window.scrollTo(0, 0);

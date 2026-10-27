@@ -84,11 +84,19 @@ export async function loadKit({ engine, padsetId, tileCount }) {
     ? padset.data.soundIds
     : [];
 
-  const limit = Math.min(soundIds.length, tileCount);
+  // BUG A: cover every pad. If the kit has more pads than the session, grow the
+  // session's tile count to match; otherwise loop over the session's pads.
+  const sessionCount = engine.getTileCount ? engine.getTileCount() : tileCount;
+  const loopCount = Math.max(sessionCount, soundIds.length);
+  if (loopCount > sessionCount && engine.setTileCount) {
+    engine.setTileCount(loopCount);
+  }
 
-  for (let index = 0; index < limit; index++) {
-    const soundId = soundIds[index];
+  for (let index = 0; index < loopCount; index++) {
+    const soundId = index < soundIds.length ? soundIds[index] : null;
 
+    // Null pad (or a session pad beyond the kit's length): empty it, even if it
+    // was never recorded, so no stale sound survives.
     if (soundId === null || soundId === undefined) {
       engine.clearTile(index);
       continue;
@@ -129,14 +137,16 @@ export async function loadKit({ engine, padsetId, tileCount }) {
       engine.setReverb(index, typeof data.reverb === 'number' ? data.reverb : 0);
       engine.setDelay(index, typeof data.delay === 'number' ? data.delay : 0);
 
+      // BUG B: remember this pad's server item so saving can PATCH it.
+      if (engine.markTileFromServer) {
+        engine.markTileFromServer(index, { soundId, fileId: audioFileId });
+      }
+
       result.loaded++;
     } catch (err) {
       result.errors.push(`Pad ${index + 1}: ${err && err.message ? err.message : String(err)}`);
     }
   }
-
-  // soundIds beyond tileCount are ignored and reported as skipped
-  result.skipped += Math.max(0, soundIds.length - limit);
 
   return result;
 }
