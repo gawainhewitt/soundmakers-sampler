@@ -46,12 +46,12 @@ async function getSoundItem(id) {
 /**
  * Save the kit.
  *
- * @param {{ engine: object, tileCount: number, tileStatuses: string[], onPadStatus: Function }} opts
+ * @param {{ engine: object, tileCount: number, tileStatuses: string[], onPadStatus: Function, title?: string }} opts
  *   engine: SamplerEngine instance
  *   onPadStatus(index, 'saving' | 'saved' | 'error', message?)
  * @returns {Promise<{ soundIds: (number|null)[], padsFailed: number[], padsetId?: number, padsetError?: string }>}
  */
-export async function saveKit({ engine, tileCount, tileStatuses, onPadStatus }) {
+export async function saveKit({ engine, tileCount, tileStatuses, onPadStatus, title }) {
   const soundIds = new Array(tileCount).fill(null);
   const padsFailed = [];
 
@@ -134,10 +134,16 @@ export async function saveKit({ engine, tileCount, tileStatuses, onPadStatus }) 
         ? 'portrait'
         : 'landscape';
 
+  // Use the caller-provided kit name when present, otherwise Kit <date>.
+  const kitTitle =
+    typeof title === 'string' && title.trim() !== ''
+      ? title.trim().slice(0, 100)
+      : `Kit ${new Date().toLocaleString()}`.slice(0, 100);
+
   const padsetBody = {
     instrument: 'sampler',
     type: 'padset',
-    title: `Kit ${new Date().toLocaleString()}`.slice(0, 100),
+    title: kitTitle,
     schemaVersion: 1,
     data: {
       soundIds,

@@ -9,8 +9,8 @@
   export let tileStatuses = Array(4).fill('empty');
   // getTileDuration(tileIndex) -> seconds (trimmed), 0 if empty
   export let getTileDuration = (tileIndex) => 0;
-  // saveKit({ onPadStatus }) -> Promise<{ soundIds, padsFailed, padsetId?, padsetError? }>
-  export let saveKit = async () => ({
+  // saveKit({ onPadStatus, title? }) -> Promise<{ soundIds, padsFailed, padsetId?, padsetError? }>
+  export let saveKit = async (opts) => ({
     soundIds: [],
     padsFailed: [],
     padsetId: null,
@@ -22,6 +22,9 @@
   let isSaving = false;
   let lastPadsetId = null;
   let saveMessage = '';
+
+  // Kit name for the padset title, defaulting to Kit <date> like today.
+  let kitName = 'Kit ' + new Date().toLocaleString();
 
   const readyCount = tileStatuses.filter((s) => s === 'ready').length;
   const anyReady = readyCount > 0;
@@ -44,7 +47,10 @@
     padProgress = {};
 
     try {
+      // Pass the trimmed name; undefined when empty so kitSaver uses its default.
+      const trimmedName = kitName.trim();
       const result = await saveKit({
+        title: trimmedName !== '' ? trimmedName : undefined,
         onPadStatus: (index, state, message) => setPadProgress(index, state, message),
       });
       if (result.padsetId) lastPadsetId = result.padsetId;
@@ -65,6 +71,9 @@
   }
 
   function handleKeydown(e) {
+    // Don't close the screen while typing in an input or textarea
+    const tag = e.target && e.target.tagName ? e.target.tagName.toLowerCase() : '';
+    if (tag === 'input' || tag === 'textarea') return;
     if (e.key === 'Enter' || e.key === 'Escape') handleClose();
   }
 
@@ -126,6 +135,18 @@
   {#if saveMessage}
     <p class="save-message">{saveMessage}</p>
   {/if}
+
+  <div class="kit-name-field">
+    <label class="kit-name-label" for="kit-name-input">Kit name</label>
+    <input
+      id="kit-name-input"
+      class="kit-name-input"
+      type="text"
+      bind:value={kitName}
+      maxlength="100"
+      disabled={isSaving}
+    />
+  </div>
 
   <div class="button-row">
     <button
@@ -272,6 +293,36 @@
     font-size: 1rem;
     color: #333;
     margin: 0;
+  }
+
+  .kit-name-field {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.4rem;
+    width: 100%;
+    max-width: 360px;
+  }
+
+  .kit-name-label {
+    font-size: 0.85rem;
+    color: #999;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .kit-name-input {
+    width: 100%;
+    padding: 0.6rem 0.9rem;
+    font-size: 1rem;
+    border: 2px solid #ddd;
+    border-radius: 10px;
+    color: #333;
+    box-sizing: border-box;
+  }
+
+  .kit-name-input[disabled] {
+    opacity: 0.6;
   }
 
   .button-row {
