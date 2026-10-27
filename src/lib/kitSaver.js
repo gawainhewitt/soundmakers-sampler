@@ -45,7 +45,10 @@ async function getSoundItem(id) {
 }
 
 /**
- * Save the kit.
+ * Save the kit. When padsetId is provided, overwrite that padset instead of
+ * creating one: untouched server-loaded pads are updated in place (same sound
+ * id, no re-upload), changed pads get new sounds, and replaced sounds are
+ * cleaned up once the padset update succeeds.
  *
  * @param {{ engine: object, tileCount: number, tileStatuses: string[], onPadStatus: Function, title?: string, padsetId?: number }} opts
  *   engine: SamplerEngine instance
@@ -63,7 +66,49 @@ export async function saveKit({ engine, tileCount, tileStatuses, onPadStatus, ti
     skippedShared: 0,
   };
 
-  // 1. Upload each ready pad's MP3 and create its sound item
+  // ── Overwrite setup: existing title + previous sound ids ────────────────
+  let existingTitle = null;
+  let previousSoundIds = [];
+
+  if (padsetId) {
+    try {
+      const current = await getItem(padsetId);
+      existingTitle = current.title || null;
+      previousSoundIds = Array.isArray(current.data && current.data.soundIds)
+        ? current.data.soundIds.filter((id) => id !== null && id !== undefined)
+        : [];
+    } catch (fetchErr) {
+      if (fetchErr && fetchErr.status === 404) {
+        throw new Error('Kit no longer exists on the server');
+      }
+      throw fetchErr;
+    }
+  }
+
+  // Sound ids referenced by kits OTHER than the one being overwritten. Used to
+  // decide whether a server-loaded pad can be updated in place, and which old
+  // sounds are safe to delete after an overwrite.
+  const sharedSoundIds = new Set();
+  let sharedUnknown = false;
+  try {
+    const otherKits = await listPadsets();
+    for (const other of otherKits) {
+      if (padsetId && other.id === padsetId) continue;
+      const ids = Array.isArray(other.data && other.data.soundIds) ? other.data.soundIds : [];
+      for (const id of ids) {
+        if (id !== null && id !== undefined) sharedSoundIds.add(id);
+      }
+    }
+  } catch (listErr) {
+    // If we can't see the other kits we must not risk altering their sounds:
+    // server-loaded pads get re-uploaded, and old sounds are kept.
+    sharedUnknown = true;
+  }
+
+  // Audio file id per saved sound, for markTileFromServer afterwards.
+  const savedFileIds = new Array(tileCount).fill(null);
+
+  // 1. Save each ready pad's sound
   for (let index = 0; index < tileCount; index++) {
     const status = tileStatuses[index] || 'empty';
     if (status !== 'ready') continue;
@@ -71,12 +116,44 @@ export async function saveKit({ engine, tileCount, tileStatuses, onPadStatus, ti
     try {
       onPadStatus(index, 'saving');
 
-      // Get the audio blob for this pad. A pad loaded from the server (and not
-      // re-recorded) has its audio stored on the server: download those bytes
-      // so we can re-upload them as a fresh file. Any other pad uses the
-      // in-memory MP3.
-      let blob;
+      const [trimStart, trimEnd] = engine.getTrim(index);
+      const settings = {
+        padIndex: index,
+        trimStart,
+        trimEnd,
+        speed: engine.getSpeed(index),
+        reverse: engine.getReverse(index),
+        reverb: engine.getReverb(index),
+        delay: engine.getDelay(index),
+      };
+
       const serverRef = engine.getServerRef ? engine.getServerRef(index) : { soundId: null, fileId: null };
+      const canUpdateInPlace =
+        serverRef.soundId &&
+        serverRef.fileId &&
+        !sharedUnknown &&
+        !sharedSoundIds.has(serverRef.soundId);
+
+      if (canUpdateInPlace) {
+        // Untouched server-loaded pad: keep the same sound id and PATCH it in
+        // place (no upload). The server replaces data, so send it complete.
+        const item = await withRateLimitRetry(() =>
+          updateItem(serverRef.soundId, {
+            title: `Pad ${index + 1}`.slice(0, 100),
+            schemaVersion: 1,
+            data: { ...settings, audioFileId: serverRef.fileId },
+            fileIds: [serverRef.fileId],
+          })
+        );
+        soundIds[index] = item.id;
+        savedFileIds[index] = serverRef.fileId;
+        onPadStatus(index, 'saved');
+        continue;
+      }
+
+      // Server-loaded pad that is shared with another kit (or sharing unknown):
+      // re-upload the same audio as a fresh file so no other kit is altered.
+      let blob;
       if (serverRef.soundId && serverRef.fileId) {
         const sound = await getSoundItem(serverRef.soundId);
         const srcFile = (sound.files || []).find((f) => f.id === serverRef.fileId);
@@ -93,28 +170,18 @@ export async function saveKit({ engine, tileCount, tileStatuses, onPadStatus, ti
       // Always upload as a fresh file — never reuse an existing fileIds.
       const uploaded = await withRateLimitRetry(() => uploadFile(blob, 'sound.mp3'));
 
-      const [trimStart, trimEnd] = engine.getTrim(index);
-
       const body = {
         instrument: 'sampler',
         type: 'sound',
         title: `Pad ${index + 1}`.slice(0, 100), // Sound item title
         schemaVersion: 1,
-        data: {
-          padIndex: index,
-          audioFileId: uploaded.id,
-          trimStart,
-          trimEnd,
-          speed: engine.getSpeed(index),
-          reverse: engine.getReverse(index),
-          reverb: engine.getReverb(index),
-          delay: engine.getDelay(index),
-        },
+        data: { ...settings, audioFileId: uploaded.id },
         fileIds: [uploaded.id],
       };
 
       const item = await withRateLimitRetry(() => createItem(body));
       soundIds[index] = item.id;
+      savedFileIds[index] = uploaded.id;
       onPadStatus(index, 'saved');
     } catch (err) {
       const message = err && err.message ? err.message : String(err);
@@ -129,7 +196,7 @@ export async function saveKit({ engine, tileCount, tileStatuses, onPadStatus, ti
     return result;
   }
 
-  // 2. Create or update the padset referencing the saved sounds
+  // 2. Build the padset referencing the saved sounds
   const orientation =
     typeof window === 'undefined'
       ? 'portrait'
@@ -137,11 +204,14 @@ export async function saveKit({ engine, tileCount, tileStatuses, onPadStatus, ti
         ? 'portrait'
         : 'landscape';
 
-  // Use the caller-provided kit name when present, otherwise Kit <date>.
+  // Title: caller-provided; else the existing kit's title (overwrite); else
+  // Kit <date> (only for brand-new kits).
   const kitTitle =
     typeof title === 'string' && title.trim() !== ''
       ? title.trim().slice(0, 100)
-      : `Kit ${new Date().toLocaleString()}`.slice(0, 100);
+      : padsetId && existingTitle
+        ? String(existingTitle).slice(0, 100)
+        : `Kit ${new Date().toLocaleString()}`.slice(0, 100);
 
   const padsetBody = {
     instrument: 'sampler',
@@ -159,21 +229,6 @@ export async function saveKit({ engine, tileCount, tileStatuses, onPadStatus, ti
 
   if (padsetId) {
     // ── Overwrite an existing padset ───────────────────────────────────────
-    // Fetch the current padset to learn the previous sound ids. If it's gone,
-    // surface a clear error so the UI can offer Save As.
-    let previousSoundIds = [];
-    try {
-      const current = await getItem(padsetId);
-      previousSoundIds = Array.isArray(current.data && current.data.soundIds)
-        ? current.data.soundIds.filter((id) => id !== null && id !== undefined)
-        : [];
-    } catch (fetchErr) {
-      if (fetchErr && fetchErr.status === 404) {
-        throw new Error('Kit no longer exists on the server');
-      }
-      throw fetchErr;
-    }
-
     // Update the padset with the full body (data and fileIds replaced
     // entirely). If this fails, throw and leave the old sounds in place.
     try {
@@ -186,51 +241,52 @@ export async function saveKit({ engine, tileCount, tileStatuses, onPadStatus, ti
       throw updateErr;
     }
 
-    // Only after the update succeeds, delete the previous sounds that no other
-    // kit still references.
-    const stillUsed = new Set();
-    try {
-      const otherKits = await listPadsets();
-      for (const other of otherKits) {
-        if (other.id === padsetId) continue; // this kit now points at the new sounds
-        const ids = Array.isArray(other.data && other.data.soundIds) ? other.data.soundIds : [];
-        for (const id of ids) {
-          if (id !== null && id !== undefined) stillUsed.add(id);
+    // Only after the update succeeds, delete the previous sounds that were
+    // replaced (not in the new sound ids) and that no other kit references.
+    if (sharedUnknown) {
+      result.padsetError = 'Could not list remaining kits; old sounds were kept.';
+    } else {
+      const newSoundIdSet = new Set(soundIds.filter((id) => id !== null && id !== undefined));
+      for (const soundId of previousSoundIds) {
+        // Still used by this kit (an in-place updated pad): keep it.
+        if (newSoundIdSet.has(soundId)) continue;
+        if (sharedSoundIds.has(soundId)) {
+          result.skippedShared++;
+          continue;
+        }
+        try {
+          await deleteSound(soundId);
+          result.deletedOldSounds.push(soundId);
+        } catch (deleteErr) {
+          // Keep going if one sound fails
+          result.padsetError = result.padsetError
+            ? result.padsetError + '; '
+            : '';
+          result.padsetError += `Could not delete old sound ${soundId}: ${deleteErr && deleteErr.message ? deleteErr.message : String(deleteErr)}`;
         }
       }
-    } catch (listErr) {
-      // Can't tell what's still used — keep the old sounds rather than lose
-      // something another kit depends on.
-      result.padsetError = `Could not list remaining kits: ${listErr && listErr.message ? listErr.message : String(listErr)}`;
-      return result;
     }
-
-    for (const soundId of previousSoundIds) {
-      if (stillUsed.has(soundId)) {
-        result.skippedShared++;
-        continue;
-      }
-      try {
-        await deleteSound(soundId);
-        result.deletedOldSounds.push(soundId);
-      } catch (deleteErr) {
-        // Keep going if one sound fails
-        result.padsetError = result.padsetError
-          ? result.padsetError + '; '
-          : '';
-        result.padsetError += `Could not delete old sound ${soundId}: ${deleteErr && deleteErr.message ? deleteErr.message : String(deleteErr)}`;
-      }
+  } else {
+    // ── Create a new padset ────────────────────────────────────────────────
+    try {
+      const padset = await withRateLimitRetry(() => createItem(padsetBody));
+      result.padsetId = padset.id;
+    } catch (err) {
+      result.padsetError = err && err.message ? err.message : String(err);
     }
-
-    return result;
   }
 
-  // ── Create a new padset ─────────────────────────────────────────────────
-  try {
-    const padset = await withRateLimitRetry(() => createItem(padsetBody));
-    result.padsetId = padset.id;
-  } catch (err) {
-    result.padsetError = err && err.message ? err.message : String(err);
+  // 3. After a successful save, remember which pads are now on the server so
+  // the next Save can update them in place instead of re-uploading.
+  if (result.padsetId) {
+    for (let index = 0; index < tileCount; index++) {
+      if (soundIds[index] !== null && savedFileIds[index] !== null && engine.markTileFromServer) {
+        engine.markTileFromServer(index, {
+          soundId: soundIds[index],
+          fileId: savedFileIds[index],
+        });
+      }
+    }
   }
 
   return result;
