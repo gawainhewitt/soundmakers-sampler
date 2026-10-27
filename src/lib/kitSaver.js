@@ -1,8 +1,10 @@
 // Saves the current kit to the server: each ready pad becomes a 'sound' item,
 // and one 'padset' item references them.
 
-import { uploadFile, createItem, updateItem } from './api.js';
+import { uploadFile, createItem, fetchFileBytes, authHeaders, fileUrlFor } from './api.js';
 import { SQUARE_COLORS } from './tileConfig.js';
+
+const BASE = import.meta.env.VITE_API_BASE || '/api';
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -27,6 +29,20 @@ async function withRateLimitRetry(fn) {
   }
 }
 
+// Fetch a single item by id (same pattern as getItem in kitLoader.js).
+async function getSoundItem(id) {
+  const res = await fetch(`${BASE}/items/${id}`, {
+    credentials: 'include',
+    headers: await authHeaders(),
+  });
+  if (!res.ok) {
+    const err = new Error(`GET /items/${id} failed: ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
+  return res.json();
+}
+
 /**
  * Save the kit.
  *
@@ -47,39 +63,29 @@ export async function saveKit({ engine, tileCount, tileStatuses, onPadStatus }) 
     try {
       onPadStatus(index, 'saving');
 
-      const [trimStart, trimEnd] = engine.getTrim(index);
-      const settings = {
-        padIndex: index,
-        trimStart,
-        trimEnd,
-        speed: engine.getSpeed(index),
-        reverse: engine.getReverse(index),
-        reverb: engine.getReverb(index),
-        delay: engine.getDelay(index),
-      };
-
-      // BUG B: a pad loaded from the server already exists there. PATCH it
-      // instead of re-uploading, so no MP3 is needed in memory.
+      // Get the audio blob for this pad. A pad loaded from the server (and not
+      // re-recorded) has its audio stored on the server: download those bytes
+      // so we can re-upload them as a fresh file. Any other pad uses the
+      // in-memory MP3.
+      let blob;
       const serverRef = engine.getServerRef ? engine.getServerRef(index) : { soundId: null, fileId: null };
       if (serverRef.soundId && serverRef.fileId) {
-        const item = await withRateLimitRetry(() =>
-          updateItem(serverRef.soundId, {
-            title: `Pad ${index + 1}`.slice(0, 100),
-            schemaVersion: 1,
-            data: { ...settings, audioFileId: serverRef.fileId },
-            fileIds: [serverRef.fileId],
-          })
-        );
-        soundIds[index] = item.id;
-        onPadStatus(index, 'saved');
-        continue;
+        const sound = await getSoundItem(serverRef.soundId);
+        const srcFile = (sound.files || []).find((f) => f.id === serverRef.fileId);
+        if (!srcFile || !srcFile.url) {
+          throw new Error(`Pad ${index + 1}: no audio file on server`);
+        }
+        const bytes = await fetchFileBytes(fileUrlFor(serverRef.fileId, srcFile.url));
+        blob = new Blob([bytes], { type: 'audio/mpeg' });
+      } else {
+        blob = await engine.getTileMp3(index);
       }
 
-      // Otherwise: upload the audio and create a new sound item.
-      const mp3 = await engine.getTileMp3(index);
+      // Upload the audio (audio/mpeg; uploadFile sets the multipart content type).
+      // Always upload as a fresh file — never reuse an existing fileIds.
+      const uploaded = await withRateLimitRetry(() => uploadFile(blob, 'sound.mp3'));
 
-      // Upload the audio (audio/mpeg; uploadFile sets the multipart content type)
-      const file = await withRateLimitRetry(() => uploadFile(mp3, 'sound.mp3'));
+      const [trimStart, trimEnd] = engine.getTrim(index);
 
       const body = {
         instrument: 'sampler',
@@ -87,10 +93,16 @@ export async function saveKit({ engine, tileCount, tileStatuses, onPadStatus }) 
         title: `Pad ${index + 1}`.slice(0, 100), // Sound item title
         schemaVersion: 1,
         data: {
-          ...settings,
-          audioFileId: file.id,
+          padIndex: index,
+          audioFileId: uploaded.id,
+          trimStart,
+          trimEnd,
+          speed: engine.getSpeed(index),
+          reverse: engine.getReverse(index),
+          reverb: engine.getReverb(index),
+          delay: engine.getDelay(index),
         },
-        fileIds: [file.id],
+        fileIds: [uploaded.id],
       };
 
       const item = await withRateLimitRetry(() => createItem(body));
