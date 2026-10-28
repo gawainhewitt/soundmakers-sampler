@@ -32,3 +32,9 @@ dist-ssr
 .env.development.local
 
 *.pem
+
+
+# mock backend
+
+mock-server/stateful/data/
+mock-server/stateful/node_modules
