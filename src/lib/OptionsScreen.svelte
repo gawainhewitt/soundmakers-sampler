@@ -159,6 +159,8 @@
   let delay = 0;
   // Volume slider value in dB (-60..+24). -60 means silent (gain 0).
   let volumeDb = 0;
+  // Linear gain for the waveform display (0 = silent, otherwise dB converted)
+  $: volume = volumeDb <= -60 ? 0 : Math.pow(10, volumeDb / 20);
 
   function initSpeed() {
     if (selectedTile === null) return;
@@ -372,6 +374,7 @@
           {cursor}
           {trimStart}
           {trimEnd}
+          gain={volume}
           on:trimchange={handleTrimChange}
         />
       </div>
