@@ -478,6 +478,78 @@ export class SamplerEngine {
     return true;
   }
 
+  // Permanently remove the audio outside the trim points, keeping only the
+  // trimmed region on the tile. Returns true if the buffer was cropped.
+  async cropToTrim(tileIndex) {
+    var tile = this.tiles[tileIndex];
+    if (!tile || !tile.buffer) return false;
+
+    var buffer = tile.buffer;
+    var rate = buffer.sampleRate;
+    var startSec = (typeof tile.trimStart === 'number') ? tile.trimStart : 0;
+    var endSec = (typeof tile.trimEnd === 'number' && tile.trimEnd > 0)
+      ? tile.trimEnd
+      : buffer.duration;
+
+    // If the trim already covers the whole buffer there is nothing to remove
+    if (startSec <= 0 && endSec >= buffer.duration) return false;
+
+    var startSample = Math.max(0, Math.floor(startSec * rate));
+    var endSample = Math.min(buffer.length, Math.floor(endSec * rate));
+    var length = Math.max(1, endSample - startSample);
+
+    var newBuffer = this.audioContext.createBuffer(buffer.numberOfChannels, length, rate);
+    for (var ch = 0; ch < buffer.numberOfChannels; ch++) {
+      var src = buffer.getChannelData(ch);
+      var dst = newBuffer.getChannelData(ch);
+      for (var i = 0; i < length; i++) {
+        dst[i] = src[startSample + i];
+      }
+    }
+
+    // Replace the buffer and reset trim to the full (cropped) range
+    this.stopTile(tileIndex);
+    tile.buffer = newBuffer;
+    tile.trimStart = 0;
+    tile.trimEnd = newBuffer.duration;
+    tile.reversedBuffer = null;
+
+    // The audio changed, so the sound can no longer be updated in place
+    tile.serverSoundId = null;
+    tile.serverFileId = null;
+
+    // Re-encode the MP3 from the cropped channel 0 data (same pattern as
+    // stopRecording): orphan any in-flight encode, then replace it.
+    tile.recordingId = (tile.recordingId || 0) + 1;
+    tile.mp3 = null;
+    tile.mp3Error = null;
+
+    var self = this;
+    var encodeId = tile.recordingId;
+    var encodeSamples = newBuffer.getChannelData(0);
+
+    tile.mp3Promise = encodeToMp3(encodeSamples, {
+      sampleRate: rate,
+      channels: 1,
+    })
+      .then(function(blob) {
+        if (self.tiles[tileIndex] && self.tiles[tileIndex].recordingId === encodeId) {
+          self.tiles[tileIndex].mp3 = blob;
+        }
+        return blob;
+      })
+      .catch(function(error) {
+        var message = error && error.message ? error.message : String(error);
+        console.error('SamplerEngine: mp3 re-encode failed for tile', tileIndex, message);
+        if (self.tiles[tileIndex] && self.tiles[tileIndex].recordingId === encodeId) {
+          self.tiles[tileIndex].mp3Error = message;
+        }
+      });
+
+    console.log('SamplerEngine: cropped tile', tileIndex, 'to', newBuffer.duration.toFixed(2) + 's');
+    return true;
+  }
+
   stopTile(tileIndex) {
     var source = this.activeSources.get(tileIndex);
     if (source) {

@@ -25,6 +25,7 @@
   export let autoLevel = () => null;
   export let undoAutoLevel = () => false;
   export let canUndoAutoLevel = () => false;
+  export let cropToTrim = () => false;
 
   const TILE_COUNT_OPTIONS = [1, 2, 4, 6, 8];
   let selectedCount = tileCount;
@@ -149,6 +150,21 @@
     if (editorBuffer && selectedTile !== null) {
       const dur = editorBuffer.duration;
       setTrim(selectedTile, e.start * dur, e.end * dur);
+    }
+  }
+
+  // True when the trim handles cover the whole sound, so cropping is a no-op
+  $: trimCoversWholeSound = trimStart <= 0.001 && trimEnd >= 0.999;
+
+  async function handleCropToTrim() {
+    if (selectedTile === null || trimCoversWholeSound) return;
+    if (!window.confirm('Permanently remove the audio outside the trim? This cannot be undone.')) return;
+
+    const ok = await cropToTrim(selectedTile);
+    if (ok) {
+      // After cropping, the whole buffer is the trimmed region
+      trimStart = 0;
+      trimEnd = 1;
     }
   }
 
@@ -461,6 +477,15 @@
             </button>
           </div>
         </div>
+
+        <button
+          class="action-button danger"
+          on:click={handleCropToTrim}
+          disabled={trimCoversWholeSound}
+          type="button"
+        >
+          Discard outside trim
+        </button>
 
         <button class="action-button danger" on:click={() => toggleClear(selectedTile)} type="button">
           Clear

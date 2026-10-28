@@ -217,6 +217,7 @@
     autoLevel={(i) => (samplerEngine ? samplerEngine.autoLevel(i) : null)}
     undoAutoLevel={(i) => (samplerEngine ? samplerEngine.undoAutoLevel(i) : false)}
     canUndoAutoLevel={(i) => (samplerEngine ? samplerEngine.canUndoAutoLevel(i) : false)}
+    cropToTrim={(i) => (samplerEngine ? samplerEngine.cropToTrim(i) : false)}
     on:save={handleOptionsSave}
   />
 {:else if currentScreen === 'load'}
