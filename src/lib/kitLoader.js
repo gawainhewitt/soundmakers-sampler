@@ -50,23 +50,16 @@ export async function listPadsets() {
   return res.json();
 }
 
-// List one page of padsets. Requests perPage + 1 items so we can tell whether
-// another page exists. Returns { items, hasMore } with items capped at perPage.
-export async function listPadsetPage({ page = 1, perPage = 5 } = {}) {
-  const params = new URLSearchParams({
-    instrument: 'sampler',
-    type: 'padset',
-    page: String(page),
-    perPage: String(perPage + 1),
-  });
-  const res = await fetch(`${BASE}/items?${params}`, {
-    credentials: 'include',
-    headers: await authHeaders(),
-  });
-  if (!res.ok) throw await apiError(res);
-  const all = await res.json();
-  const hasMore = all.length > perPage;
-  return { items: all.slice(0, perPage), hasMore };
+// List one page of padsets, sliced from the full kit list. Returns
+// { items, hasMore } with items capped at perPage.
+export async function listPadsetPage({ page = 1, perPage = 4 } = {}) {
+  const all = await listAllPadsets();
+  const start = (page - 1) * perPage;
+  const end = start + perPage;
+  return {
+    items: all.slice(start, end),
+    hasMore: all.length > end,
+  };
 }
 
 // Fetch every padsets by walking pages of 50. Used for checks that need to see
