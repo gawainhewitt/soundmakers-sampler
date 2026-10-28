@@ -571,20 +571,6 @@ export class SamplerEngine {
 
   // ── Tile management ───────────────────────────────────────────────────────
 
-  // Load an audio file (URL) into a tile, decoding it and marking the tile ready.
-  // Reuses the normal tile path, so trim/speed/reverse/reverb/delay all apply.
-  async loadTileFromUrl(fileURL, tileIndex) {
-    try {
-      var response = await fetch(fileURL);
-      if (!response.ok) throw new Error('HTTP ' + response.status);
-      var arrayBuffer = await response.arrayBuffer();
-      return await this.loadTileFromArrayBuffer(arrayBuffer, tileIndex);
-    } catch (error) {
-      console.error('SamplerEngine: failed to load', fileURL, 'into tile', tileIndex, error);
-      return false;
-    }
-  }
-
   // Load already-fetched audio bytes into a tile, decoding and marking it ready.
   // Resets trim/speed/reverse/reverb/delay to defaults (apply settings after).
   async loadTileFromArrayBuffer(arrayBuffer, tileIndex) {

@@ -307,17 +307,19 @@
     }
   }
 
+  const onResize = () => { updateOrientation(); measureGrid(); measureEditor(); };
+
   onMount(() => {
     updateOrientation();
     measureGrid();
-    window.addEventListener('resize', () => { updateOrientation(); measureGrid(); measureEditor(); });
-    window.addEventListener('orientationchange', () => { updateOrientation(); measureGrid(); measureEditor(); });
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
     window.addEventListener('keydown', handleKeydown);
   });
 
   onDestroy(() => {
-    window.removeEventListener('resize', () => { updateOrientation(); measureGrid(); measureEditor(); });
-    window.removeEventListener('orientationchange', () => { updateOrientation(); measureGrid(); measureEditor(); });
+    window.removeEventListener('resize', onResize);
+    window.removeEventListener('orientationchange', onResize);
     window.removeEventListener('keydown', handleKeydown);
     stopPlayback();
   });

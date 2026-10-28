@@ -7,27 +7,6 @@ const BASE_ORIGIN = BASE.startsWith('http')
   ? BASE.replace(/\/wp-json\/orchlab-sampler\/v1$/, '')
   : '';
 
-export async function getMe() {
-  const res = await fetch(`${BASE}/me`, { credentials: 'include' });
-  if (!res.ok) throw new Error(`GET /me failed: ${res.status}`);
-  return res.json();
-}
-
-export async function listSounds({ page = 1, perPage = 50 } = {}) {
-  const params = new URLSearchParams({
-    instrument: 'sampler',
-    type: 'sound',
-    page: String(page),
-    perPage: String(perPage),
-  });
-  const res = await fetch(`${BASE}/items?${params}`, {
-    credentials: 'include',
-    headers: await authHeaders(),
-  });
-  if (!res.ok) throw new Error(`GET /items failed: ${res.status}`);
-  return res.json();
-}
-
 const IS_MOCK = import.meta.env.DEV;
 
 let nonce = null;
@@ -107,31 +86,6 @@ export async function uploadFile(blob, filename) {
   return res.json();
 }
 
-export async function saveSound({ padIndex, title, audioBlob, backgroundColor }) {
-  await maybeMockError();
-
-  const audio = await uploadFile(audioBlob, 'sound.mp3');
-
-  const res = await fetch(`${BASE}/items`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(await authHeaders()),
-    },
-    body: JSON.stringify({
-      instrument: 'sampler',
-      type: 'sound',
-      title: String(title).slice(0, 100),
-      schemaVersion: 1,
-      data: { padIndex, audioFileId: audio.id, backgroundColor },
-      fileIds: [audio.id],
-    }),
-  });
-  if (!res.ok) throw await apiError(res);
-  return res.json();
-}
-
 export async function deleteSound(id) {
   await maybeMockError();
 
@@ -173,8 +127,7 @@ export async function updateItem(id, body) {
   return res.json();
 }
 
-// Create any item (sound or padset) with an arbitrary data payload. This is
-// separate from saveSound, which keeps its narrower behaviour unchanged.
+// Create any item (sound or padset) with an arbitrary data payload.
 export async function createItem(body) {
   await maybeMockError();
 
