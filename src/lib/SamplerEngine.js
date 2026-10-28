@@ -173,7 +173,6 @@ export class SamplerEngine {
 
       var encodeId = this.tiles[tileIndex].recordingId;
       var encodeSamples = pcmData; // Float32Array; encodeToMp3 converts internally
-      var encodeStart = (import.meta.env.DEV) ? performance.now() : 0;
 
       this.tiles[tileIndex].mp3Promise = encodeToMp3(encodeSamples, {
         sampleRate: this.recordingSampleRate,
@@ -183,16 +182,6 @@ export class SamplerEngine {
           if (self.tiles[tileIndex] && self.tiles[tileIndex].recordingId === encodeId) {
             self.tiles[tileIndex].mp3 = blob;
           }
-
-          // TEMP: remove after encode test
-          if (import.meta.env.DEV) {
-            console.log(
-              'SamplerEngine: mp3 encode finished for tile', tileIndex,
-              'in', ((performance.now() - encodeStart) / 1000).toFixed(2) + 's',
-              'size:', blob.size, 'bytes'
-            );
-          }
-          // END TEMP
           return blob;
         })
         .catch(function(error) {
