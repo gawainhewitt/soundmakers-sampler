@@ -10,7 +10,7 @@ export class SamplerEngine {
     this.initialized = false;
 
     this.tiles = Array.from({ length: tileCount || 4 }, function() {
-      return { status: 'empty', buffer: null, trimStart: 0, trimEnd: 0, speed: 1, reverse: false, reversedBuffer: null, reverb: 0, delay: 0, mp3: null, mp3Promise: null, mp3Error: null, recordingId: 0, serverSoundId: null, serverFileId: null };
+      return { status: 'empty', buffer: null, trimStart: 0, trimEnd: 0, speed: 1, reverse: false, reversedBuffer: null, reverb: 0, delay: 0, volume: 1, previousVolume: null, mp3: null, mp3Promise: null, mp3Error: null, recordingId: 0, serverSoundId: null, serverFileId: null };
     });
 
     this.activeSources = new Map();
@@ -291,11 +291,16 @@ export class SamplerEngine {
     source.buffer = buf;
     source.loop = loop;
 
+    // Per-tile volume (linear gain, 0 = silent, clamped to 0..16)
+    var volume = (typeof tile.volume === 'number') ? Math.max(0, Math.min(16, tile.volume)) : 1;
+    var volumeGain = this.audioContext.createGain();
+    volumeGain.gain.value = volume;
+
     // Dry path
     var dryGain = this.audioContext.createGain();
     dryGain.gain.value = 1.0;
     source.connect(dryGain);
-    dryGain.connect(this.audioContext.destination);
+    dryGain.connect(volumeGain);
 
     // Reverb (wet) path — ConvolverNode with a generated impulse response
     var reverbAmount = (typeof tile.reverb === 'number') ? Math.max(0, Math.min(1, tile.reverb)) : 0;
@@ -307,7 +312,7 @@ export class SamplerEngine {
       reverbGain.gain.value = reverbAmount;
       source.connect(convolver);
       convolver.connect(reverbGain);
-      reverbGain.connect(this.audioContext.destination);
+      reverbGain.connect(volumeGain);
     }
 
     // Delay (wet) path — DelayNode with feedback
@@ -323,8 +328,10 @@ export class SamplerEngine {
       delay.connect(feedback);
       feedback.connect(delay);
       delay.connect(delayGain);
-      delayGain.connect(this.audioContext.destination);
+      delayGain.connect(volumeGain);
     }
+
+    volumeGain.connect(this.audioContext.destination);
 
     // Playback speed effect (playbackRate; also shifts pitch)
     var speed = (typeof tile.speed === 'number' && tile.speed > 0) ? tile.speed : 1;
@@ -407,6 +414,60 @@ export class SamplerEngine {
     return tile ? tile.delay || 0 : 0;
   }
 
+  getVolume(tileIndex) {
+    var tile = this.tiles[tileIndex];
+    return tile ? tile.volume || 0 : 1;
+  }
+
+  setVolume(tileIndex, amount) {
+    var tile = this.tiles[tileIndex];
+    if (!tile) return false;
+    tile.volume = Math.max(0, Math.min(16, amount));
+    console.log('SamplerEngine: tile', tileIndex, 'volume →', tile.volume.toFixed(2));
+    return true;
+  }
+
+  // Scan the trimmed region for the largest absolute sample and set the volume
+  // so that peak lands at 0.9 (a comfortable headroom). Returns the new gain.
+  autoLevel(tileIndex) {
+    var tile = this.tiles[tileIndex];
+    if (!tile || !tile.buffer) return null;
+
+    var data = tile.buffer.getChannelData(0);
+    var startSample = Math.floor((typeof tile.trimStart === 'number' ? tile.trimStart : 0) * tile.buffer.sampleRate);
+    var endSample = Math.ceil((typeof tile.trimEnd === 'number' && tile.trimEnd > 0 ? tile.trimEnd : tile.buffer.duration) * tile.buffer.sampleRate);
+    startSample = Math.max(0, Math.min(data.length, startSample));
+    endSample = Math.max(0, Math.min(data.length, endSample));
+
+    var peak = 0;
+    for (var i = startSample; i < endSample; i++) {
+      var v = Math.abs(data[i]);
+      if (v > peak) peak = v;
+    }
+
+    if (peak === 0) return null;
+
+    var gain = Math.min(16, 0.9 / peak);
+    this.tiles[tileIndex].previousVolume = this.tiles[tileIndex].volume;
+    this.tiles[tileIndex].volume = gain;
+    console.log('SamplerEngine: tile', tileIndex, 'auto level →', gain.toFixed(2), '(peak', peak.toFixed(3) + ')');
+    return gain;
+  }
+
+  undoAutoLevel(tileIndex) {
+    var tile = this.tiles[tileIndex];
+    if (!tile || tile.previousVolume === null) return false;
+    tile.volume = tile.previousVolume;
+    tile.previousVolume = null;
+    console.log('SamplerEngine: tile', tileIndex, 'volume restored →', tile.volume.toFixed(2));
+    return true;
+  }
+
+  canUndoAutoLevel(tileIndex) {
+    var tile = this.tiles[tileIndex];
+    return tile ? tile.previousVolume !== null : false;
+  }
+
   setTrim(tileIndex, start, end) {
     var tile = this.tiles[tileIndex];
     if (!tile || !tile.buffer) return false;
@@ -484,6 +545,8 @@ export class SamplerEngine {
       tile.reverse = false;
       tile.reverb = 0;
       tile.delay = 0;
+      tile.volume = 1;
+      tile.previousVolume = null;
       tile.reversedBuffer = null;
       // A fresh sound replaces any previous recording: discard stale MP3 state
       tile.mp3 = null;
@@ -528,6 +591,8 @@ export class SamplerEngine {
     this.tiles[tileIndex].reverse = false;
     this.tiles[tileIndex].reverb = 0;
     this.tiles[tileIndex].delay = 0;
+    this.tiles[tileIndex].volume = 1;
+    this.tiles[tileIndex].previousVolume = null;
     this.tiles[tileIndex].reversedBuffer = null;
     this.tiles[tileIndex].mp3 = null;
     this.tiles[tileIndex].mp3Promise = null;
@@ -610,7 +675,7 @@ export class SamplerEngine {
   setTileCount(count) {
     var self = this;
     var newTiles = Array.from({ length: count }, function(_, i) {
-      return self.tiles[i] || { status: 'empty', buffer: null, trimStart: 0, trimEnd: 0, speed: 1, reverse: false, reversedBuffer: null, reverb: 0, delay: 0, mp3: null, mp3Promise: null, mp3Error: null, recordingId: 0, serverSoundId: null, serverFileId: null };
+      return self.tiles[i] || { status: 'empty', buffer: null, trimStart: 0, trimEnd: 0, speed: 1, reverse: false, reversedBuffer: null, reverb: 0, delay: 0, volume: 1, previousVolume: null, mp3: null, mp3Promise: null, mp3Error: null, recordingId: 0, serverSoundId: null, serverFileId: null };
     });
 
     // Stop any playback/recording that falls outside the new range

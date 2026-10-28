@@ -125,6 +125,7 @@ export async function saveKit({ engine, tileCount, tileStatuses, onPadStatus, ti
         reverse: engine.getReverse(index),
         reverb: engine.getReverb(index),
         delay: engine.getDelay(index),
+        volume: engine.getVolume(index),
       };
 
       const serverRef = engine.getServerRef ? engine.getServerRef(index) : { soundId: null, fileId: null };

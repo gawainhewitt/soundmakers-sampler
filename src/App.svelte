@@ -205,6 +205,7 @@
     getReverse={(i) => (samplerEngine ? samplerEngine.getReverse(i) : false)}
     getReverb={(i) => (samplerEngine ? samplerEngine.getReverb(i) : 0)}
     getDelay={(i) => (samplerEngine ? samplerEngine.getDelay(i) : 0)}
+    getVolume={(i) => (samplerEngine ? samplerEngine.getVolume(i) : 1)}
     playTile={(i, opts) => (samplerEngine ? samplerEngine.playTile(i, opts) : 0)}
     stopTile={(i) => (samplerEngine ? samplerEngine.stopTile(i) : null)}
     setTrim={(i, s, e) => (samplerEngine ? samplerEngine.setTrim(i, s, e) : false)}
@@ -212,6 +213,10 @@
     setReverse={(i, r) => (samplerEngine ? samplerEngine.setReverse(i, r) : false)}
     setReverb={(i, a) => (samplerEngine ? samplerEngine.setReverb(i, a) : false)}
     setDelay={(i, a) => (samplerEngine ? samplerEngine.setDelay(i, a) : false)}
+    setVolume={(i, g) => (samplerEngine ? samplerEngine.setVolume(i, g) : false)}
+    autoLevel={(i) => (samplerEngine ? samplerEngine.autoLevel(i) : null)}
+    undoAutoLevel={(i) => (samplerEngine ? samplerEngine.undoAutoLevel(i) : false)}
+    canUndoAutoLevel={(i) => (samplerEngine ? samplerEngine.canUndoAutoLevel(i) : false)}
     on:save={handleOptionsSave}
   />
 {:else if currentScreen === 'load'}

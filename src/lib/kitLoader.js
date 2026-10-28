@@ -159,6 +159,7 @@ export async function loadKit({ engine, padsetId, tileCount }) {
       engine.setReverse(index, !!data.reverse);
       engine.setReverb(index, typeof data.reverb === 'number' ? data.reverb : 0);
       engine.setDelay(index, typeof data.delay === 'number' ? data.delay : 0);
+      engine.setVolume(index, typeof data.volume === 'number' ? data.volume : 1);
 
       // BUG B: remember this pad's server item so saving can PATCH it.
       if (engine.markTileFromServer) {
