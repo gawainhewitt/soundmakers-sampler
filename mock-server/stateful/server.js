@@ -498,12 +498,18 @@ const server = http.createServer(async (req, res) => {
             );
             return;
           }
-          const type = new URL(req.url, 'http://x').searchParams.get('type');
-          const items = Object.values(db.items)
+          const params = new URL(req.url, 'http://x').searchParams;
+          const type = params.get('type');
+          const page = Math.max(1, parseInt(params.get('page'), 10) || 1);
+          const perPage = Math.min(100, Math.max(1, parseInt(params.get('perPage'), 10) || PAGE_SIZE));
+
+          const all = Object.values(db.items)
             .filter((item) => item.instrument === instrument)
             .filter((item) => !type || item.type === type)
             .sort((a, b) => a.id - b.id);
-          sendJson(res, 200, items.map(serializeItem));
+
+          const pageItems = all.slice((page - 1) * perPage, page * perPage);
+          sendJson(res, 200, pageItems.map(serializeItem));
           return;
         }
 
