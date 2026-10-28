@@ -43,6 +43,19 @@ export default defineConfig(({ command }) => {
     server: {
       host: true,
       https: localCerts || undefined,
+      proxy: {
+        '/api': {
+          target: 'http://127.0.0.1:4010',
+          changeOrigin: true,
+          rewrite: (p) => p.replace(/^\/api/, ''),
+          configure: (proxy) => {
+            proxy.on('proxyReq', (proxyReq) => {
+              // Dev-only mock auth: Prism checks that the cookie is present, not its value
+              proxyReq.setHeader('Cookie', 'wordpress_logged_in_{hash}=mock');
+            });
+          },
+        },
+      },
     },
     build: {
       outDir: 'dist',

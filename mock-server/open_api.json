@@ -1,0 +1,1482 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "OrchLab Instruments API",
+    "version": "1.0.0-draft",
+    "description": "Save and reload work from the SoundMakers instruments on the OrchLab website. **Status: draft only.**\n\n## How it works\n\nEach save is an **item** with an `instrument` (`sampler`), a `type` chosen by the instrument (e.g. `sound`, `padset`) and a `data` object. The API stores `data` exactly as sent and doesn't check its contents, so instruments can change their format without a WordPress update. Saves are private to the logged-in user.\n\nAudio and images are uploaded first with `POST /files`, which returns an id. Use that id in `data` and list it in the item's `fileIds`. Files no item lists are **deleted after 24 hours**. Saved items come back with a `files` list containing each file's URL, which only works for its owner.\n\nThe sampler's draft fields go inside `data`. The draft's `id`, `title` and `created_at` become item fields. Its `audioUrl`/`imageUrl`/`imageUrls` become file ids (`audioFileId`, `imageFileId`, `imageFileIds`). See the `POST /items` examples.\n\n## Logging in\n\nInstruments run on the same domain as WordPress, so requests carry the WordPress login cookie. WordPress also requires a **security token** with it. (WordPress's own names for this, like the `X-WP-Nonce` header, use the technical term \"nonce\".)\n\n1. Get a token: `GET /wp-admin/admin-ajax.php?action=rest-nonce`. Logged out, this returns `400` with body `0`.\n2. Send it as the `X-WP-Nonce` header on every API request.\n3. If a request fails with `403 rest_cookie_invalid_nonce`, the token has expired. Get a new one and retry.\n\nThen check `GET /me`: show save controls only if `instruments.sampler.enabled` is true.\n\n## Things to know\n\n- **schemaVersion:** if your `data` format changes, increase it and upgrade older items when you load them. The API never changes `data`.\n- **Missing references:** deleting a sound doesn't update pad sets that use it. Treat a missing sound as an empty pad.\n- **Errors** use the WordPress format `{ code, message, data: { status } }`. Rely on `code`, not `message`.\n- **Limits:** 10 MB per file (to be agreed), 200 MB storage per user, 256 KB of `data`, 30 saves/uploads per minute. Images are resized to 512 px and photo metadata is removed.\n\n## Development\n\n- **Mock:** this file can run as a mock server, e.g. `npx @stoplight/prism-cli mock openapi.json`.\n- **Local WordPress:** proxy `/wp-json`, `/wp-admin/admin-ajax.php` and `/orchlab-instruments-file` from your dev server to the local site, so the login cookie is sent.\n- **Another domain (e.g. Netlify), staging only:** use an application password for a test account (`Authorization: Basic`, no token needed). Ask the site admin to allow your site's address, and load files from `GET /files/{id}/content`. Never put an application password in a production build.\n"
+  },
+  "servers": [
+    {
+      "url": "/wp-json/orchlab-sampler/v1",
+      "description": "The WordPress site the instrument runs on"
+    }
+  ],
+  "security": [
+    {
+      "wpCookie": [],
+      "wpToken": []
+    },
+    {
+      "appPassword": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Me",
+      "description": "The current user and what they can do."
+    },
+    {
+      "name": "Items",
+      "description": "Saved work, such as sounds and pad sets."
+    },
+    {
+      "name": "Files",
+      "description": "Uploaded audio and images, used by items."
+    },
+    {
+      "name": "WordPress",
+      "description": "Endpoints outside this API that instruments also use."
+    }
+  ],
+  "paths": {
+    "/me": {
+      "get": {
+        "tags": [
+          "Me"
+        ],
+        "summary": "Get the current user",
+        "description": "Works logged out too, without a token. Without a token it always reports `loggedIn` as `false`, even for a logged-in user.",
+        "operationId": "getMe",
+        "security": [
+          {},
+          {
+            "wpCookie": [],
+            "wpToken": []
+          },
+          {
+            "appPassword": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The current user, their storage use and which instruments they can save with.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                },
+                "examples": {
+                  "loggedIn": {
+                    "summary": "Logged in",
+                    "value": {
+                      "loggedIn": true,
+                      "userId": 7,
+                      "displayName": "Sam",
+                      "loginUrl": "https://orchlab.org/wp-login.php",
+                      "quotaUsed": 1048576,
+                      "quotaLimit": 209715200,
+                      "instruments": {
+                        "sampler": {
+                          "enabled": true,
+                          "maxFileBytes": 10485760,
+                          "allowedMimes": [
+                            "audio/mpeg",
+                            "image/jpeg",
+                            "image/png"
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "loggedOut": {
+                    "summary": "Logged out",
+                    "value": {
+                      "loggedIn": false,
+                      "userId": 0,
+                      "displayName": null,
+                      "loginUrl": "https://orchlab.org/wp-login.php",
+                      "quotaUsed": 0,
+                      "quotaLimit": 0,
+                      "instruments": {
+                        "sampler": {
+                          "enabled": true,
+                          "maxFileBytes": 10485760,
+                          "allowedMimes": [
+                            "audio/mpeg",
+                            "image/jpeg",
+                            "image/png"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/items": {
+      "get": {
+        "tags": [
+          "Items"
+        ],
+        "summary": "List items",
+        "description": "The current user's items for an instrument, newest `updatedAt` first.",
+        "operationId": "listItems",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/InstrumentQuery"
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "description": "Only return items of this type.",
+            "schema": {
+              "$ref": "#/components/schemas/ItemType"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "perPage",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of items.",
+            "headers": {
+              "X-WP-Total": {
+                "description": "Total number of matching items.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-WP-TotalPages": {
+                "description": "Total number of pages.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Item"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/NotLoggedIn"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Items"
+        ],
+        "summary": "Create an item",
+        "description": "Upload any files first with `POST /files`, then list their ids in `fileIds`.",
+        "operationId": "createItem",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItemCreate"
+              },
+              "examples": {
+                "sound": {
+                  "summary": "Save a sound",
+                  "value": {
+                    "instrument": "sampler",
+                    "type": "sound",
+                    "title": "Door slam",
+                    "schemaVersion": 1,
+                    "data": {
+                      "padIndex": 0,
+                      "audioFileId": 101,
+                      "imageFileId": 102,
+                      "backgroundColor": "#E63946"
+                    },
+                    "fileIds": [
+                      101,
+                      102
+                    ]
+                  }
+                },
+                "padset": {
+                  "summary": "Save a pad set",
+                  "value": {
+                    "instrument": "sampler",
+                    "type": "padset",
+                    "title": "My first kit",
+                    "schemaVersion": 1,
+                    "data": {
+                      "soundIds": [
+                        40,
+                        41,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null
+                      ],
+                      "imageFileIds": [
+                        null,
+                        103,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null
+                      ],
+                      "backgroundColors": [
+                        "#E63946",
+                        "#F4A261",
+                        "#2A9D8F",
+                        "#264653",
+                        "#8AB17D",
+                        "#E9C46A",
+                        "#6D597A",
+                        "#457B9D"
+                      ],
+                      "gridOrientation": "portrait"
+                    },
+                    "fileIds": [
+                      103
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The saved item.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Item"
+                },
+                "examples": {
+                  "sound": {
+                    "$ref": "#/components/examples/SoundItem"
+                  },
+                  "padset": {
+                    "$ref": "#/components/examples/PadSetItem"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/NotLoggedIn"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "413": {
+            "$ref": "#/components/responses/DataTooLarge"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/items/{id}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ItemId"
+        }
+      ],
+      "get": {
+        "tags": [
+          "Items"
+        ],
+        "summary": "Get an item",
+        "operationId": "getItem",
+        "responses": {
+          "200": {
+            "description": "The item.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Item"
+                },
+                "examples": {
+                  "sound": {
+                    "$ref": "#/components/examples/SoundItem"
+                  },
+                  "padset": {
+                    "$ref": "#/components/examples/PadSetItem"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/NotLoggedIn"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Items"
+        ],
+        "summary": "Update an item",
+        "description": "Send only the fields to change. Each one **replaces** the stored value: `data` is not merged, so send all of it. Last write wins.\n\nFiles dropped from `fileIds` that no other item uses are deleted after 24 hours.\n",
+        "operationId": "updateItem",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItemUpdate"
+              },
+              "examples": {
+                "rename": {
+                  "summary": "Rename",
+                  "value": {
+                    "title": "Kitchen sounds"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated item.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Item"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/NotLoggedIn"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "413": {
+            "$ref": "#/components/responses/DataTooLarge"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Items"
+        ],
+        "summary": "Delete an item",
+        "description": "Also deletes the item's files, unless another of your items uses them.",
+        "operationId": "deleteItem",
+        "responses": {
+          "200": {
+            "description": "Deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemDeleted"
+                },
+                "example": {
+                  "deleted": true,
+                  "id": 40,
+                  "deletedFileIds": [
+                    101,
+                    102
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/NotLoggedIn"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/files": {
+      "post": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Upload a file",
+        "description": "Upload one file, then use its id in an item. A file no item uses is deleted after 24 hours.\n\nThe sampler accepts MP3 (`audio/mpeg`), JPG and PNG. Images are re-encoded (max 512 px, metadata removed), so use the returned `bytes`, not the original size.\n",
+        "operationId": "uploadFile",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file",
+                  "instrument"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "The audio or image file."
+                  },
+                  "instrument": {
+                    "$ref": "#/components/schemas/Instrument"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The uploaded file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileUploaded"
+                },
+                "example": {
+                  "id": 101,
+                  "url": "https://orchlab.org/orchlab-instruments-file/101",
+                  "mime": "audio/mpeg",
+                  "bytes": 48213,
+                  "createdAt": "2026-10-08T14:00:58Z"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/NotLoggedIn"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "413": {
+            "$ref": "#/components/responses/FileTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedType"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          },
+          "507": {
+            "$ref": "#/components/responses/QuotaExceeded"
+          }
+        }
+      }
+    },
+    "/files/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "delete": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Delete a file",
+        "description": "Only for files no item uses, e.g. an upload you decided not to save. Files used by items are deleted with the item.",
+        "operationId": "deleteFile",
+        "responses": {
+          "200": {
+            "description": "Deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileDeleted"
+                },
+                "example": {
+                  "deleted": true,
+                  "id": 101
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/NotLoggedIn"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "An item still uses this file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "oli_file_in_use",
+                  "message": "This file is used by a saved item.",
+                  "data": {
+                    "status": 409,
+                    "itemIds": [
+                      40
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/files/{id}/content": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Get a file's contents",
+        "description": "The file itself, through the API. Use this when testing from another domain, where each file's `url` won't work. Supports `Range` requests.",
+        "operationId": "getFileContent",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The file.",
+            "content": {
+              "audio/mpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "206": {
+            "description": "Part of the file, for a `Range` request."
+          },
+          "401": {
+            "$ref": "#/components/responses/NotLoggedIn"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/wp-admin/admin-ajax.php": {
+      "servers": [
+        {
+          "url": "/",
+          "description": "The WordPress site root"
+        }
+      ],
+      "get": {
+        "tags": [
+          "WordPress"
+        ],
+        "summary": "Get a security token",
+        "description": "WordPress core. Uses the login cookie only. Send the result as `X-WP-Nonce` on API requests.",
+        "operationId": "getSecurityToken",
+        "security": [
+          {
+            "wpCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "action",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "rest-nonce"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Logged in. The body is the token.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "a1b2c3d4e5"
+              }
+            }
+          },
+          "400": {
+            "description": "Logged out. The body is `0`.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "0"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orchlab-instruments-file/{id}": {
+      "servers": [
+        {
+          "url": "/",
+          "description": "The WordPress site root"
+        }
+      ],
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Download a file",
+        "description": "The `url` given for each file. Only works for the file's owner. Uses the login cookie, no token. Supports `Range` requests.",
+        "operationId": "downloadFile",
+        "security": [
+          {
+            "wpCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The file.",
+            "content": {
+              "audio/mpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "206": {
+            "description": "Part of the file, for a `Range` request."
+          },
+          "404": {
+            "description": "Not found, or not yours."
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "wpCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "wordpress_logged_in_{hash}",
+        "description": "The WordPress login cookie. The browser sends it automatically on same-origin requests."
+      },
+      "appPassword": {
+        "type": "http",
+        "scheme": "basic",
+        "description": "Development on another domain only: a WordPress username and application password, on staging. See \"Testing from another domain\"."
+      },
+      "wpToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-WP-Nonce",
+        "description": "Security token from `GET /wp-admin/admin-ajax.php?action=rest-nonce`. Required with the cookie on API requests."
+      }
+    },
+    "parameters": {
+      "InstrumentQuery": {
+        "name": "instrument",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/Instrument"
+        }
+      },
+      "ItemId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "integer"
+        }
+      }
+    },
+    "schemas": {
+      "Instrument": {
+        "type": "string",
+        "enum": [
+          "sampler"
+        ],
+        "description": "The instrument the item or file belongs to."
+      },
+      "ItemType": {
+        "type": "string",
+        "pattern": "^[a-z0-9-]{1,32}$",
+        "description": "Chosen by the instrument, e.g. `sound` or `padset`.",
+        "examples": [
+          "sound",
+          "padset"
+        ]
+      },
+      "Item": {
+        "type": "object",
+        "required": [
+          "id",
+          "instrument",
+          "type",
+          "title",
+          "schemaVersion",
+          "data",
+          "fileIds",
+          "files",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "instrument": {
+            "$ref": "#/components/schemas/Instrument"
+          },
+          "type": {
+            "$ref": "#/components/schemas/ItemType"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "schemaVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Version of the instrument's `data` format for this type."
+          },
+          "data": {
+            "type": "object",
+            "description": "Owned by the instrument. Stored and returned exactly as sent."
+          },
+          "fileIds": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "description": "Every file this item uses."
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/File"
+            },
+            "description": "Details and URL for each id in `fileIds`."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ItemCreate": {
+        "type": "object",
+        "required": [
+          "instrument",
+          "type",
+          "schemaVersion",
+          "data"
+        ],
+        "properties": {
+          "instrument": {
+            "$ref": "#/components/schemas/Instrument"
+          },
+          "type": {
+            "$ref": "#/components/schemas/ItemType"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 100,
+            "default": "",
+            "description": "Plain text. HTML is removed."
+          },
+          "schemaVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "data": {
+            "type": "object",
+            "description": "Any JSON object, up to 256 KB once encoded."
+          },
+          "fileIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "maxItems": 32,
+            "uniqueItems": true,
+            "default": [],
+            "description": "Every file used in `data`. Each must be one of your uploads."
+          }
+        }
+      },
+      "ItemUpdate": {
+        "type": "object",
+        "description": "Any of these fields. Each replaces the stored value.",
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "schemaVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "data": {
+            "type": "object"
+          },
+          "fileIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "maxItems": 32,
+            "uniqueItems": true
+          }
+        }
+      },
+      "ItemDeleted": {
+        "type": "object",
+        "properties": {
+          "deleted": {
+            "type": "boolean",
+            "const": true
+          },
+          "id": {
+            "type": "integer"
+          },
+          "deletedFileIds": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          }
+        }
+      },
+      "File": {
+        "type": "object",
+        "required": [
+          "id",
+          "url",
+          "mime",
+          "bytes"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Only works for the logged-in owner."
+          },
+          "mime": {
+            "type": "string",
+            "examples": [
+              "audio/mpeg"
+            ]
+          },
+          "bytes": {
+            "type": "integer"
+          }
+        }
+      },
+      "FileUploaded": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/File"
+          },
+          {
+            "type": "object",
+            "required": [
+              "createdAt"
+            ],
+            "properties": {
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          }
+        ]
+      },
+      "FileDeleted": {
+        "type": "object",
+        "properties": {
+          "deleted": {
+            "type": "boolean",
+            "const": true
+          },
+          "id": {
+            "type": "integer"
+          }
+        }
+      },
+      "Me": {
+        "type": "object",
+        "required": [
+          "loggedIn",
+          "userId",
+          "displayName",
+          "loginUrl",
+          "quotaUsed",
+          "quotaLimit",
+          "instruments"
+        ],
+        "properties": {
+          "loggedIn": {
+            "type": "boolean"
+          },
+          "userId": {
+            "type": "integer",
+            "description": "0 when logged out."
+          },
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "loginUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "quotaUsed": {
+            "type": "integer",
+            "description": "Bytes used, across all instruments."
+          },
+          "quotaLimit": {
+            "type": "integer",
+            "description": "Bytes allowed. 0 when logged out."
+          },
+          "instruments": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Show save controls only when true. When logged out, true means \"offer a login prompt\"."
+                },
+                "maxFileBytes": {
+                  "type": "integer"
+                },
+                "allowedMimes": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "data"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Stable. Base app behaviour on this."
+          },
+          "message": {
+            "type": "string",
+            "description": "For logs. May change."
+          },
+          "data": {
+            "type": "object",
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "integer"
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      }
+    },
+    "examples": {
+      "SoundItem": {
+        "summary": "A saved sound",
+        "value": {
+          "id": 40,
+          "instrument": "sampler",
+          "type": "sound",
+          "title": "Door slam",
+          "schemaVersion": 1,
+          "data": {
+            "padIndex": 0,
+            "audioFileId": 101,
+            "imageFileId": 102,
+            "backgroundColor": "#E63946"
+          },
+          "fileIds": [
+            101,
+            102
+          ],
+          "files": [
+            {
+              "id": 101,
+              "url": "https://orchlab.org/orchlab-instruments-file/101",
+              "mime": "audio/mpeg",
+              "bytes": 48213
+            },
+            {
+              "id": 102,
+              "url": "https://orchlab.org/orchlab-instruments-file/102",
+              "mime": "image/jpeg",
+              "bytes": 31877
+            }
+          ],
+          "createdAt": "2026-10-08T14:01:12Z",
+          "updatedAt": "2026-10-08T14:01:12Z"
+        }
+      },
+      "PadSetItem": {
+        "summary": "A saved pad set",
+        "value": {
+          "id": 42,
+          "instrument": "sampler",
+          "type": "padset",
+          "title": "My first kit",
+          "schemaVersion": 1,
+          "data": {
+            "soundIds": [
+              40,
+              41,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null
+            ],
+            "imageFileIds": [
+              null,
+              103,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null
+            ],
+            "backgroundColors": [
+              "#E63946",
+              "#F4A261",
+              "#2A9D8F",
+              "#264653",
+              "#8AB17D",
+              "#E9C46A",
+              "#6D597A",
+              "#457B9D"
+            ],
+            "gridOrientation": "portrait"
+          },
+          "fileIds": [
+            103
+          ],
+          "files": [
+            {
+              "id": 103,
+              "url": "https://orchlab.org/orchlab-instruments-file/103",
+              "mime": "image/png",
+              "bytes": 22140
+            }
+          ],
+          "createdAt": "2026-10-08T14:03:00Z",
+          "updatedAt": "2026-10-08T14:03:00Z"
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "A field is missing or invalid, or a file id isn't yours.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "examples": {
+              "rest_missing_callback_param": {
+                "value": {
+                  "code": "rest_missing_callback_param",
+                  "message": "Missing parameter(s): instrument",
+                  "data": {
+                    "status": 400,
+                    "params": [
+                      "instrument"
+                    ]
+                  }
+                }
+              },
+              "rest_invalid_param": {
+                "value": {
+                  "code": "rest_invalid_param",
+                  "message": "Invalid parameter(s): schemaVersion",
+                  "data": {
+                    "status": 400,
+                    "params": {
+                      "schemaVersion": "schemaVersion must be an integer of at least 1."
+                    }
+                  }
+                }
+              },
+              "oli_invalid_file_ref": {
+                "value": {
+                  "code": "oli_invalid_file_ref",
+                  "message": "One or more files could not be found.",
+                  "data": {
+                    "status": 400,
+                    "fileIds": [
+                      999
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "NotLoggedIn": {
+        "description": "Not logged in, or no `X-WP-Nonce` was sent.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "code": "oli_not_logged_in",
+              "message": "You need to be logged in to save.",
+              "data": {
+                "status": 401
+              }
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "The security token has expired (get a new one and retry), saving is switched off for this instrument, this account can't save, or application passwords aren't allowed from here.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "examples": {
+              "rest_cookie_invalid_nonce": {
+                "value": {
+                  "code": "rest_cookie_invalid_nonce",
+                  "message": "Cookie check failed",
+                  "data": {
+                    "status": 403
+                  }
+                }
+              },
+              "oli_instrument_disabled": {
+                "value": {
+                  "code": "oli_instrument_disabled",
+                  "message": "Saving is not available for this instrument yet.",
+                  "data": {
+                    "status": 403
+                  }
+                }
+              },
+              "oli_forbidden": {
+                "value": {
+                  "code": "oli_forbidden",
+                  "message": "You are not allowed to save.",
+                  "data": {
+                    "status": 403
+                  }
+                }
+              },
+              "oli_app_passwords_disabled": {
+                "value": {
+                  "code": "oli_app_passwords_disabled",
+                  "message": "Application passwords cannot be used here.",
+                  "data": {
+                    "status": 403
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Doesn't exist, or belongs to someone else.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "code": "oli_not_found",
+              "message": "Not found.",
+              "data": {
+                "status": 404
+              }
+            }
+          }
+        }
+      },
+      "DataTooLarge": {
+        "description": "`data` is over the size limit.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "code": "oli_data_too_large",
+              "message": "This save is too large.",
+              "data": {
+                "status": 413,
+                "maxBytes": 262144
+              }
+            }
+          }
+        }
+      },
+      "FileTooLarge": {
+        "description": "The file is over the size limit.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "code": "oli_file_too_large",
+              "message": "This file is too large.",
+              "data": {
+                "status": 413,
+                "maxBytes": 10485760
+              }
+            }
+          }
+        }
+      },
+      "UnsupportedType": {
+        "description": "This file type isn't allowed for the instrument.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "code": "oli_unsupported_type",
+              "message": "This type of file is not allowed.",
+              "data": {
+                "status": 415,
+                "allowedMimes": [
+                  "audio/mpeg",
+                  "image/jpeg",
+                  "image/png"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "RateLimited": {
+        "description": "Too many saves or uploads. Wait `retryAfter` seconds.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "code": "oli_rate_limited",
+              "message": "Too many saves. Please wait a moment.",
+              "data": {
+                "status": 429,
+                "retryAfter": 30
+              }
+            }
+          }
+        }
+      },
+      "ServerError": {
+        "description": "Something went wrong on the server. Try again later.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "examples": {
+              "oli_upload_failed": {
+                "value": {
+                  "code": "oli_upload_failed",
+                  "message": "The upload failed. Please try again.",
+                  "data": {
+                    "status": 500
+                  }
+                }
+              },
+              "oli_db_error": {
+                "value": {
+                  "code": "oli_db_error",
+                  "message": "Could not save. Please try again.",
+                  "data": {
+                    "status": 500
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "QuotaExceeded": {
+        "description": "The user's storage is full.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "code": "oli_quota_exceeded",
+              "message": "You have used all your storage space.",
+              "data": {
+                "status": 507,
+                "quotaUsed": 209715200,
+                "quotaLimit": 209715200
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

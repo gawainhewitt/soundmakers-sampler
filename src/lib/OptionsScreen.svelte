@@ -13,6 +13,7 @@
   export let getReverse = () => false;
   export let getReverb = () => 0;
   export let getDelay = () => 0;
+  export let getVolume = () => 1;
   export let playTile = () => 0;
   export let stopTile = () => null;
   export let setTrim = () => false;
@@ -20,6 +21,11 @@
   export let setReverse = () => false;
   export let setReverb = () => false;
   export let setDelay = () => false;
+  export let setVolume = () => false;
+  export let autoLevel = () => null;
+  export let undoAutoLevel = () => false;
+  export let canUndoAutoLevel = () => false;
+  export let cropToTrim = () => false;
 
   const TILE_COUNT_OPTIONS = [1, 2, 4, 6, 8];
   let selectedCount = tileCount;
@@ -147,11 +153,30 @@
     }
   }
 
-  // ── Editor speed / reverb effects ─────────────────────────────────────────
+  // True when the trim handles cover the whole sound, so cropping is a no-op
+  $: trimCoversWholeSound = trimStart <= 0.001 && trimEnd >= 0.999;
+
+  async function handleCropToTrim() {
+    if (selectedTile === null || trimCoversWholeSound) return;
+    if (!window.confirm('Permanently remove the audio outside the trim? This cannot be undone.')) return;
+
+    const ok = await cropToTrim(selectedTile);
+    if (ok) {
+      // After cropping, the whole buffer is the trimmed region
+      trimStart = 0;
+      trimEnd = 1;
+    }
+  }
+
+  // ── Editor speed / reverb / volume effects ───────────────────────────────
   let speed = 1;
   let reversed = false;
   let reverb = 0;
   let delay = 0;
+  // Volume slider value in dB (-60..+24). -60 means silent (gain 0).
+  let volumeDb = 0;
+  // Linear gain for the waveform display (0 = silent, otherwise dB converted)
+  $: volume = volumeDb <= -60 ? 0 : Math.pow(10, volumeDb / 20);
 
   function initSpeed() {
     if (selectedTile === null) return;
@@ -159,6 +184,9 @@
     reversed = getReverse(selectedTile);
     reverb = getReverb(selectedTile);
     delay = getDelay(selectedTile);
+    // Convert stored linear gain to dB (treat 0 as silent / -60)
+    const vol = getVolume(selectedTile);
+    volumeDb = vol > 0 ? 20 * Math.log10(vol) : -60;
   }
 
   function handleSpeedInput() {
@@ -180,6 +208,36 @@
   function handleDelayInput() {
     if (selectedTile === null) return;
     setDelay(selectedTile, delay);
+  }
+
+  function handleVolumeInput() {
+    if (selectedTile === null) return;
+    // -60 dB is silent (gain 0); otherwise convert dB to linear gain
+    const gain = volumeDb <= -60 ? 0 : Math.pow(10, volumeDb / 20);
+    setVolume(selectedTile, gain);
+  }
+
+  function handleAutoLevel() {
+    if (selectedTile === null) return;
+    const gain = autoLevel(selectedTile);
+    if (gain !== null && gain !== undefined) {
+      volumeDb = gain > 0 ? 20 * Math.log10(gain) : -60;
+    }
+  }
+
+  function handleUndoVolume() {
+    if (selectedTile === null) return;
+    const ok = undoAutoLevel(selectedTile);
+    if (ok) {
+      const vol = getVolume(selectedTile);
+      volumeDb = vol > 0 ? 20 * Math.log10(vol) : -60;
+    }
+  }
+
+  // Format the dB readout: "+6 dB", "0 dB", "-12 dB", silent at -60
+  function formatDb(db) {
+    if (db <= -60) return '-∞ dB';
+    return (db > 0 ? '+' : '') + Math.round(db) + ' dB';
   }
 
   // Grid size in px, measured so the whole column fits the viewport in both
@@ -249,17 +307,19 @@
     }
   }
 
+  const onResize = () => { updateOrientation(); measureGrid(); measureEditor(); };
+
   onMount(() => {
     updateOrientation();
     measureGrid();
-    window.addEventListener('resize', () => { updateOrientation(); measureGrid(); measureEditor(); });
-    window.addEventListener('orientationchange', () => { updateOrientation(); measureGrid(); measureEditor(); });
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
     window.addEventListener('keydown', handleKeydown);
   });
 
   onDestroy(() => {
-    window.removeEventListener('resize', () => { updateOrientation(); measureGrid(); measureEditor(); });
-    window.removeEventListener('orientationchange', () => { updateOrientation(); measureGrid(); measureEditor(); });
+    window.removeEventListener('resize', onResize);
+    window.removeEventListener('orientationchange', onResize);
     window.removeEventListener('keydown', handleKeydown);
     stopPlayback();
   });
@@ -332,6 +392,7 @@
           {cursor}
           {trimStart}
           {trimEnd}
+          gain={volume}
           on:trimchange={handleTrimChange}
         />
       </div>
@@ -391,6 +452,42 @@
             on:change={handleDelayInput}
           />
         </div>
+
+        <div class="effect-control">
+          <label class="effect-label" for="volume-slider">Volume: <strong>{formatDb(volumeDb)}</strong></label>
+          <input
+            id="volume-slider"
+            type="range"
+            min="-60"
+            max="24"
+            step="1"
+            bind:value={volumeDb}
+            on:input={handleVolumeInput}
+            on:change={handleVolumeInput}
+          />
+          <div class="effect-buttons">
+            <button class="action-button small" on:click={handleAutoLevel} type="button">
+              Auto level
+            </button>
+            <button
+              class="action-button small"
+              on:click={handleUndoVolume}
+              disabled={!canUndoAutoLevel(selectedTile)}
+              type="button"
+            >
+              Undo level
+            </button>
+          </div>
+        </div>
+
+        <button
+          class="action-button danger"
+          on:click={handleCropToTrim}
+          disabled={trimCoversWholeSound}
+          type="button"
+        >
+          Discard outside trim
+        </button>
 
         <button class="action-button danger" on:click={() => toggleClear(selectedTile)} type="button">
           Clear
@@ -633,6 +730,23 @@
   .effect-control input[type="range"] {
     width: 100%;
     accent-color: #06C0F0;
+  }
+
+  .effect-buttons {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .action-button.small {
+    padding: 0.5rem 1rem;
+    font-size: 0.9rem;
+  }
+
+  .action-button[disabled] {
+    opacity: 0.5;
+    cursor: default;
   }
 
   .no-recording {

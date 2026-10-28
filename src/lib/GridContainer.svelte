@@ -6,6 +6,11 @@
   export let samplerEngine;
   export let tileCount = 4;
   export let tileStatuses = Array(4).fill('empty');
+  // Only handle keyboard shortcuts when the play screen is showing
+  export let active = true;
+
+  // Keyboard shortcuts: Z, X, C, V, B, N, M trigger tiles 1-7
+  const KEY_TILES = ['z', 'x', 'c', 'v', 'b', 'n', 'm', ','];
 
   let orientation = 'portrait';
 
@@ -62,8 +67,19 @@
     const status = tileStatuses[index];
 
     if (status === 'empty') {
+      // Find the tile that is currently recording, if any, so we can sync it
+      // after the engine starts the new recording.
+      const previous = tileStatuses.findIndex((s) => s === 'recording');
+
       const ok = await samplerEngine.startRecording(index);
-      if (ok) updateTileStatus(index, 'recording');
+      if (ok) {
+        // The engine auto-stopped the previous recording; update its tile to
+        // match what the engine reports for it.
+        if (previous !== -1 && previous !== index) {
+          updateTileStatus(previous, samplerEngine.getTileStatus(previous));
+        }
+        updateTileStatus(index, 'recording');
+      }
 
     } else if (status === 'recording') {
       await samplerEngine.stopRecording(index);
@@ -73,6 +89,22 @@
       const duration = samplerEngine.playTile(index, { loop: false });
       if (duration) setPlaying(index, duration);
     }
+  }
+
+  function handleKeydown(e) {
+    if (!active) return;
+    if (e.repeat) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+    // Don't trigger tiles while typing in an input or textarea
+    const tag = e.target && e.target.tagName ? e.target.tagName.toLowerCase() : '';
+    if (tag === 'input' || tag === 'textarea') return;
+
+    const index = KEY_TILES.indexOf(e.key.toLowerCase());
+    if (index === -1 || index >= tileCount) return;
+
+    e.preventDefault();
+    handleTileTap(index);
   }
 
   function updateOrientation() {
@@ -92,12 +124,14 @@
     window.addEventListener('resize', updateOrientation);
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('blur', handleWindowBlur);
+    window.addEventListener('keydown', handleKeydown);
   });
 
   onDestroy(() => {
     window.removeEventListener('resize', updateOrientation);
     document.removeEventListener('visibilitychange', handleVisibilityChange);
     window.removeEventListener('blur', handleWindowBlur);
+    window.removeEventListener('keydown', handleKeydown);
     playTimers.forEach(function(t) { if (t) clearTimeout(t); });
   });
 </script>

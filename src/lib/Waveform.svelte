@@ -11,6 +11,8 @@
   // Trim region on a 0..1 scale (0 = start of buffer, 1 = end).
   export let trimStart = 0;
   export let trimEnd = 1;
+  // Linear gain applied to the drawn waveform (display only, no audio change).
+  export let gain = 1;
 
   let canvasEl;
   let dragging = null; // 'start' | 'end' | null
@@ -88,8 +90,11 @@
       } else {
         ctx.fillStyle = color;
       }
-      const top = mid - max * (mid - 1);
-      const bottom = mid - min * (mid - 1);
+      // Apply the display gain, clamped so boosted peaks stay on the canvas
+      const gMin = Math.max(-1, Math.min(1, min * gain));
+      const gMax = Math.max(-1, Math.min(1, max * gain));
+      const top = mid - gMax * (mid - 1);
+      const bottom = mid - gMin * (mid - 1);
       const height = Math.max(1, bottom - top);
       ctx.fillRect(x, top, 1, height);
     }
@@ -167,7 +172,7 @@
     window.removeEventListener('orientationchange', handleResize);
   });
 
-  $: if (buffer) { cursor; trimStart; trimEnd; draw(); }
+  $: if (buffer) { cursor; trimStart; trimEnd; gain; draw(); }
 </script>
 
 <canvas

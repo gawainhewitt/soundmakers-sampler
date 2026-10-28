@@ -8,6 +8,8 @@
   import LoadScreen from './lib/LoadScreen.svelte';
   import SaveScreen from './lib/SaveScreen.svelte';
   import { SamplerEngine } from './lib/SamplerEngine.js';
+  import { saveKit as saveKitApi, deleteKit as deleteKitApi, renameKit as renameKitApi } from './lib/kitSaver.js';
+  import { loadKit as loadKitApi, listPadsets as listPadsetsApi, listPadsetPage as listPadsetPageApi } from './lib/kitLoader.js';
 
   let currentScreen = 'splash';
   let samplerEngine = null;
@@ -23,6 +25,11 @@
   // Tile statuses live here so they survive screen changes
   // 'empty' | 'recording' | 'ready'
   let tileStatuses = Array(tileCount).fill('empty');
+
+  // The kit currently loaded/created, { id, title } or null. Set when a kit
+  // loads or a new padset is created; kept across overwrites. Never cleared
+  // on recording or closing screens.
+  let currentKit = null;
 
   onMount(() => {
     samplerEngine = new SamplerEngine(tileCount);
@@ -87,13 +94,17 @@
     document.body.style.setProperty('background-color', '#000', 'important');
     currentScreen = 'play';
 
-    // Reflect any kit sounds now held by the engine in the tile statuses
-    const loaded = (event && event.detail && event.detail.loaded) || 0;
-    const limit = Math.min(loaded, tileStatuses.length, samplerEngine ? samplerEngine.getTileCount() : 0);
-    for (let i = 0; i < limit; i++) {
-      tileStatuses[i] = samplerEngine.getTileStatus(i);
+    if (samplerEngine) {
+      tileStatuses = Array.from({ length: tileCount }, (_, i) =>
+        samplerEngine.getTileStatus(i) || 'empty'
+      );
     }
-    if (limit > 0) tileStatuses = [...tileStatuses];
+
+    // Track the loaded kit so Save can overwrite it
+    const detail = event && event.detail ? event.detail : {};
+    if (detail.padsetId) {
+      currentKit = { id: detail.padsetId, title: detail.title || '' };
+    }
 
     setTimeout(() => {
       window.scrollTo(0, 0);
@@ -101,6 +112,15 @@
       document.documentElement.style.setProperty('--vh', `${vh}px`);
       window.dispatchEvent(new Event('resize'));
     }, 100);
+  }
+
+  // Called by SaveScreen when a save created a new padset (Save As),
+  // so the current kit follows the new padset.
+  function handleKitSaved(event) {
+    const detail = event && event.detail ? event.detail : {};
+    if (detail.padsetId) {
+      currentKit = { id: detail.padsetId, title: detail.title || '' };
+    }
   }
 
   function handleSaveClose() {
@@ -163,14 +183,14 @@
 
 {#if currentScreen === 'splash'}
   <SplashScreen
-    title="Soundmakers Sampler"
+    title="Tiles"
     instructions="Tap a tile to record a sound. Tap again to play it back."
     footerNote="On Apple devices, turn off silent mode"
     on:click={handleSplashClick}
   />
 {:else if currentScreen === 'about'}
   <SplashScreen
-    title="Soundmakers Sampler"
+    title="Tiles"
     instructions="Tap a tile to record a sound. Tap again to play it back."
     footerNote="On Apple devices, turn off silent mode"
     on:click={handleAboutClose}
@@ -185,6 +205,7 @@
     getReverse={(i) => (samplerEngine ? samplerEngine.getReverse(i) : false)}
     getReverb={(i) => (samplerEngine ? samplerEngine.getReverb(i) : 0)}
     getDelay={(i) => (samplerEngine ? samplerEngine.getDelay(i) : 0)}
+    getVolume={(i) => (samplerEngine ? samplerEngine.getVolume(i) : 1)}
     playTile={(i, opts) => (samplerEngine ? samplerEngine.playTile(i, opts) : 0)}
     stopTile={(i) => (samplerEngine ? samplerEngine.stopTile(i) : null)}
     setTrim={(i, s, e) => (samplerEngine ? samplerEngine.setTrim(i, s, e) : false)}
@@ -192,13 +213,22 @@
     setReverse={(i, r) => (samplerEngine ? samplerEngine.setReverse(i, r) : false)}
     setReverb={(i, a) => (samplerEngine ? samplerEngine.setReverb(i, a) : false)}
     setDelay={(i, a) => (samplerEngine ? samplerEngine.setDelay(i, a) : false)}
+    setVolume={(i, g) => (samplerEngine ? samplerEngine.setVolume(i, g) : false)}
+    autoLevel={(i) => (samplerEngine ? samplerEngine.autoLevel(i) : null)}
+    undoAutoLevel={(i) => (samplerEngine ? samplerEngine.undoAutoLevel(i) : false)}
+    canUndoAutoLevel={(i) => (samplerEngine ? samplerEngine.canUndoAutoLevel(i) : false)}
+    cropToTrim={(i) => (samplerEngine ? samplerEngine.cropToTrim(i) : false)}
     on:save={handleOptionsSave}
   />
 {:else if currentScreen === 'load'}
   <LoadScreen
     title="Load a Kit"
     {tileCount}
-    loadTile={(url, i) => (samplerEngine ? samplerEngine.loadTileFromUrl(url, i) : false)}
+    loadKit={(opts) => loadKitApi({ engine: samplerEngine, ...opts })}
+    listPadsets={listPadsetsApi}
+    listPadsetPage={listPadsetPageApi}
+    deleteKit={(padset) => deleteKitApi({ padset })}
+    renameKit={(opts) => renameKitApi(opts)}
     on:close={handleLoadClose}
   />
 {:else if currentScreen === 'save'}
@@ -206,7 +236,10 @@
     title="Save a Kit"
     {tileCount}
     {tileStatuses}
+    {currentKit}
     getTileDuration={(i) => (samplerEngine ? samplerEngine.getTileDuration(i) : 0)}
+    saveKit={(opts) => saveKitApi({ engine: samplerEngine, tileCount, tileStatuses, ...opts })}
+    on:saved={handleKitSaved}
     on:close={handleSaveClose}
   />
 {/if}
@@ -228,7 +261,7 @@
 
   <main>
     <ResponsiveContainer>
-      <GridContainer {samplerEngine} {tileCount} bind:tileStatuses />
+      <GridContainer {samplerEngine} {tileCount} bind:tileStatuses active={currentScreen === 'play'} />
     </ResponsiveContainer>
   </main>
 </div>

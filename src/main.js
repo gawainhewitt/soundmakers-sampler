@@ -13,7 +13,7 @@ document.addEventListener('touchmove', function(e) {
   }
 }, { passive: false });
 
-const app = mount(App, {
+mount(App, {
   target: document.getElementById('app'),
 })
 
@@ -99,5 +99,3 @@ window.addEventListener('focus', function() {
   console.log('Window focused - resetting viewport');
   resetViewportAndLayout();
 });
-
-export default app
