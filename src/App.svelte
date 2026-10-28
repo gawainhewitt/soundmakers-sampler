@@ -255,7 +255,7 @@
 
   <main>
     <ResponsiveContainer>
-      <GridContainer {samplerEngine} {tileCount} bind:tileStatuses />
+      <GridContainer {samplerEngine} {tileCount} bind:tileStatuses active={currentScreen === 'play'} />
     </ResponsiveContainer>
   </main>
 </div>

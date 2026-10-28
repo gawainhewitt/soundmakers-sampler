@@ -6,6 +6,11 @@
   export let samplerEngine;
   export let tileCount = 4;
   export let tileStatuses = Array(4).fill('empty');
+  // Only handle keyboard shortcuts when the play screen is showing
+  export let active = true;
+
+  // Keyboard shortcuts: Z, X, C, V, B, N, M trigger tiles 1-7
+  const KEY_TILES = ['z', 'x', 'c', 'v', 'b', 'n', 'm', ','];
 
   let orientation = 'portrait';
 
@@ -86,6 +91,22 @@
     }
   }
 
+  function handleKeydown(e) {
+    if (!active) return;
+    if (e.repeat) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+    // Don't trigger tiles while typing in an input or textarea
+    const tag = e.target && e.target.tagName ? e.target.tagName.toLowerCase() : '';
+    if (tag === 'input' || tag === 'textarea') return;
+
+    const index = KEY_TILES.indexOf(e.key.toLowerCase());
+    if (index === -1 || index >= tileCount) return;
+
+    e.preventDefault();
+    handleTileTap(index);
+  }
+
   function updateOrientation() {
     orientation = window.innerHeight > window.innerWidth ? 'portrait' : 'landscape';
   }
@@ -103,12 +124,14 @@
     window.addEventListener('resize', updateOrientation);
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('blur', handleWindowBlur);
+    window.addEventListener('keydown', handleKeydown);
   });
 
   onDestroy(() => {
     window.removeEventListener('resize', updateOrientation);
     document.removeEventListener('visibilitychange', handleVisibilityChange);
     window.removeEventListener('blur', handleWindowBlur);
+    window.removeEventListener('keydown', handleKeydown);
     playTimers.forEach(function(t) { if (t) clearTimeout(t); });
   });
 </script>
