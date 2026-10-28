@@ -183,14 +183,14 @@
 
 {#if currentScreen === 'splash'}
   <SplashScreen
-    title="Soundmakers Sampler"
+    title="Tiles"
     instructions="Tap a tile to record a sound. Tap again to play it back."
     footerNote="On Apple devices, turn off silent mode"
     on:click={handleSplashClick}
   />
 {:else if currentScreen === 'about'}
   <SplashScreen
-    title="Soundmakers Sampler"
+    title="Tiles"
     instructions="Tap a tile to record a sound. Tap again to play it back."
     footerNote="On Apple devices, turn off silent mode"
     on:click={handleAboutClose}
