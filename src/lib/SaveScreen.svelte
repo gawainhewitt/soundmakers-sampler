@@ -179,7 +179,7 @@
     <p class="save-message">{saveMessage}</p>
   {/if}
 
-  {#if showNameField}
+  {#if !currentKit || showNameField}
     <div class="kit-name-field">
       <label class="kit-name-label" for="kit-name-input">Kit name</label>
       <input
