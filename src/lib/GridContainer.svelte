@@ -62,8 +62,19 @@
     const status = tileStatuses[index];
 
     if (status === 'empty') {
+      // Find the tile that is currently recording, if any, so we can sync it
+      // after the engine starts the new recording.
+      const previous = tileStatuses.findIndex((s) => s === 'recording');
+
       const ok = await samplerEngine.startRecording(index);
-      if (ok) updateTileStatus(index, 'recording');
+      if (ok) {
+        // The engine auto-stopped the previous recording; update its tile to
+        // match what the engine reports for it.
+        if (previous !== -1 && previous !== index) {
+          updateTileStatus(previous, samplerEngine.getTileStatus(previous));
+        }
+        updateTileStatus(index, 'recording');
+      }
 
     } else if (status === 'recording') {
       await samplerEngine.stopRecording(index);
