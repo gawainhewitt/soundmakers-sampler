@@ -50,6 +50,52 @@ export async function listPadsets() {
   return res.json();
 }
 
+// List one page of padsets. Requests perPage + 1 items so we can tell whether
+// another page exists. Returns { items, hasMore } with items capped at perPage.
+export async function listPadsetPage({ page = 1, perPage = 5 } = {}) {
+  const params = new URLSearchParams({
+    instrument: 'sampler',
+    type: 'padset',
+    page: String(page),
+    perPage: String(perPage + 1),
+  });
+  const res = await fetch(`${BASE}/items?${params}`, {
+    credentials: 'include',
+    headers: await authHeaders(),
+  });
+  if (!res.ok) throw await apiError(res);
+  const all = await res.json();
+  const hasMore = all.length > perPage;
+  return { items: all.slice(0, perPage), hasMore };
+}
+
+// Fetch every padsets by walking pages of 50. Used for checks that need to see
+// all kits (e.g. shared-sound checks), not just the first 50.
+export async function listAllPadsets() {
+  const all = [];
+  const perPage = 50;
+  let page = 1;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const params = new URLSearchParams({
+      instrument: 'sampler',
+      type: 'padset',
+      page: String(page),
+      perPage: String(perPage),
+    });
+    const res = await fetch(`${BASE}/items?${params}`, {
+      credentials: 'include',
+      headers: await authHeaders(),
+    });
+    if (!res.ok) throw await apiError(res);
+    const items = await res.json();
+    all.push(...items);
+    if (items.length < perPage) break;
+    page++;
+  }
+  return all;
+}
+
 /**
  * Load a saved kit into the engine.
  *

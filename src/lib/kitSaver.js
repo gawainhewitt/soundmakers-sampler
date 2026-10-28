@@ -2,7 +2,7 @@
 // and one 'padset' item references them.
 
 import { uploadFile, createItem, updateItem, deleteSound, fetchFileBytes, authHeaders, fileUrlFor } from './api.js';
-import { getItem, listPadsets } from './kitLoader.js';
+import { getItem, listAllPadsets } from './kitLoader.js';
 import { SQUARE_COLORS } from './tileConfig.js';
 
 const BASE = import.meta.env.VITE_API_BASE || '/api';
@@ -91,7 +91,7 @@ export async function saveKit({ engine, tileCount, tileStatuses, onPadStatus, ti
   const sharedSoundIds = new Set();
   let sharedUnknown = false;
   try {
-    const otherKits = await listPadsets();
+    const otherKits = await listAllPadsets();
     for (const other of otherKits) {
       if (padsetId && other.id === padsetId) continue;
       const ids = Array.isArray(other.data && other.data.soundIds) ? other.data.soundIds : [];
@@ -320,7 +320,7 @@ export async function deleteKit({ padset }) {
   // 2. After the padset is gone, find sounds still used by other padsets.
   const stillUsed = new Set();
   try {
-    const remainingPadsets = await listPadsets();
+    const remainingPadsets = await listAllPadsets();
     for (const other of remainingPadsets) {
       const ids = Array.isArray(other.data && other.data.soundIds) ? other.data.soundIds : [];
       for (const id of ids) {

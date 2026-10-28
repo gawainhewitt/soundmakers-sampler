@@ -6,48 +6,28 @@
   export let title = 'Load a Kit';
   // Number of configured tiles (caps how many kit sounds load)
   export let tileCount = 4;
-  // loadTile(fileURL, tileIndex) -> Promise<boolean> (preset kits)
-  export let loadTile = (fileURL, tileIndex) => false;
   // loadKit({ padsetId, tileCount }) -> Promise<{ loaded, skipped, errors }>
   export let loadKit = async (opts) => ({ loaded: 0, skipped: 0, errors: [] });
   // listPadsets() -> Promise<Item[]> (server kits)
   export let listPadsets = async () => [];
+  // listPadsetPage({ page, perPage }) -> Promise<{ items, hasMore }>
+  export let listPadsetPage = async (opts) => ({ items: [], hasMore: false });
   // deleteKit({ padset }) -> Promise<{ deletedSounds, skippedShared, errors }>
   export let deleteKit = async (opts) => ({ deletedSounds: [], skippedShared: 0, errors: [] });
   // renameKit({ padset, title }) -> Promise<item>
   export let renameKit = async (opts) => ({});
 
-  const KIT_FOLDER = '/kits/testkit/';
-  const KIT_SIZE = 8; // up to 8 one-shot sounds in a test kit
-
-  let loading = false;
-  let loadedCount = 0;
-
   // Server kits
   let padsets = [];
   let padsetsError = '';
+  let page = 1;
+  let hasMore = false;
   let kitLoadingId = null;
   let kitError = '';
   let deletingId = null;
   let renamingId = null;
   let renameValue = '';
   let renameBusy = false;
-
-  async function handleLoadKit() {
-    if (loading) return;
-    loading = true;
-    loadedCount = 0;
-
-    // Load up to the number of configured tiles (sounds beyond that are skipped)
-    const limit = Math.min(KIT_SIZE, tileCount);
-
-    for (let i = 0; i < limit; i++) {
-      const ok = await loadTile(KIT_FOLDER + (i + 1) + '.wav', i);
-      if (ok) loadedCount++;
-    }
-
-    loading = false;
-  }
 
   async function handleLoadServerKit(padset) {
     if (kitLoadingId !== null) return;
@@ -78,8 +58,14 @@
 
     try {
       await deleteKit(padset);
-      // Remove it from the list so it disappears without a reload
-      padsets = padsets.filter((p) => p.id !== padset.id);
+      // If the page is now empty and we're not on the first page, step back;
+      // otherwise just remove the kit from the current page.
+      const remaining = padsets.filter((p) => p.id !== padset.id);
+      if (remaining.length === 0 && page > 1) {
+        await loadPage(page - 1);
+      } else {
+        padsets = remaining;
+      }
     } catch (err) {
       kitError = (err && err.message) ? err.message : String(err);
     } finally {
@@ -140,17 +126,27 @@
     }
   }
 
-  async function loadPadsets() {
+  async function loadPage(n) {
     try {
-      padsets = await listPadsets();
+      const result = await listPadsetPage({ page: n, perPage: 4 });
+      padsets = result.items;
+      page = n;
+      hasMore = result.hasMore;
       padsetsError = '';
     } catch (err) {
       padsetsError = (err && err.message) ? err.message : String(err);
     }
   }
 
+  function goToPage(n) {
+    loadPage(n);
+  }
+
+  const anyActionInProgress = () =>
+    kitLoadingId !== null || deletingId !== null || renamingId !== null;
+
   function handleClose() {
-    dispatch('close', { loaded: loadedCount });
+    dispatch('close');
   }
 
   function handleKeydown(e) {
@@ -162,7 +158,7 @@
 
   onMount(() => {
     window.addEventListener('keydown', handleKeydown);
-    loadPadsets();
+    loadPage(1);
   });
 
   onDestroy(() => window.removeEventListener('keydown', handleKeydown));
@@ -172,23 +168,6 @@
   <h1>{title}</h1>
 
   <div class="kit-list">
-    <!-- Preset kit (unchanged) -->
-    <div class="kit-item">
-      <div class="kit-info">
-        <span class="kit-name">Test Kit</span>
-        <span class="kit-meta">
-          {#if loading}
-            Loading…
-          {:else}
-            {loadedCount > 0 ? (loadedCount + ' sounds loaded') : (tileCount + ' tiles')}
-          {/if}
-        </span>
-      </div>
-      <button class="load-button" on:click={handleLoadKit} disabled={loading} type="button">
-        {loading ? 'Loading…' : 'Load'}
-      </button>
-    </div>
-
     <!-- Saved kits from the server -->
     <div class="kit-section-label">Saved kits</div>
 
@@ -261,6 +240,28 @@
           </div>
         </div>
       {/each}
+    {/if}
+
+    {#if padsets.length > 0}
+      <div class="pager-row">
+        <button
+          class="delete-button"
+          on:click={() => goToPage(page - 1)}
+          disabled={page === 1 || anyActionInProgress()}
+          type="button"
+        >
+          Previous
+        </button>
+        <span class="page-label">Page {page}</span>
+        <button
+          class="delete-button"
+          on:click={() => goToPage(page + 1)}
+          disabled={!hasMore || anyActionInProgress()}
+          type="button"
+        >
+          Next
+        </button>
+      </div>
     {/if}
 
     {#if kitError}
@@ -355,6 +356,19 @@
     font-size: 0.9rem;
     color: #e74c3c;
     margin: 0;
+  }
+
+  .pager-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    padding-top: 0.5rem;
+  }
+
+  .page-label {
+    font-size: 0.9rem;
+    color: #555;
   }
 
   .load-button {
