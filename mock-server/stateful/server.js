@@ -498,8 +498,10 @@ const server = http.createServer(async (req, res) => {
             );
             return;
           }
+          const type = new URL(req.url, 'http://x').searchParams.get('type');
           const items = Object.values(db.items)
             .filter((item) => item.instrument === instrument)
+            .filter((item) => !type || item.type === type)
             .sort((a, b) => a.id - b.id);
           sendJson(res, 200, items.map(serializeItem));
           return;
