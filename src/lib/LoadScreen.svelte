@@ -58,13 +58,11 @@
 
     try {
       await deleteKit(padset);
-      // If the page is now empty and we're not on the first page, step back;
-      // otherwise just remove the kit from the current page.
-      const remaining = padsets.filter((p) => p.id !== padset.id);
-      if (remaining.length === 0 && page > 1) {
+      // Reload the current page so it refills to 4 kits when more exist.
+      await loadPage(page);
+      // If that page is now empty and we're not on the first page, step back.
+      if (padsets.length === 0 && page > 1) {
         await loadPage(page - 1);
-      } else {
-        padsets = remaining;
       }
     } catch (err) {
       kitError = (err && err.message) ? err.message : String(err);
