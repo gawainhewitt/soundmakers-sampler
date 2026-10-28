@@ -86,6 +86,8 @@ export async function listAllPadsets() {
     if (items.length < perPage) break;
     page++;
   }
+  // Newest first (listPadsetPage slices pages from this list)
+  all.sort((a, b) => b.id - a.id);
   return all;
 }
 
