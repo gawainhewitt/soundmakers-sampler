@@ -33,6 +33,9 @@
   const readyCount = tileStatuses.filter((s) => s === 'ready').length;
   const anyReady = readyCount > 0;
 
+  // Landscape: 2 pads per row (4 cols for 8 pads, 2 for 4, etc.)
+  const padColumns = Math.ceil(tileCount / 2);
+
   function formatDuration(seconds) {
     if (!seconds || seconds <= 0) return '—';
     return seconds.toFixed(1) + 's';
@@ -142,7 +145,7 @@
     {/if}
   </div>
 
-  <div class="pad-grid">
+  <div class="pad-grid" style="--pad-cols: {padColumns};">
     {#each Array(tileCount) as _, index}
       {@const status = tileStatuses[index] || 'empty'}
       {@const filled = status === 'ready'}
@@ -171,61 +174,63 @@
     {/each}
   </div>
 
-  {#if currentKit}
-    <p class="saving-to">Saving to: {currentKit.title || 'Untitled'}</p>
-  {/if}
+  <div class="save-controls">
+    {#if currentKit}
+      <p class="saving-to">Saving to: {currentKit.title || 'Untitled'}</p>
+    {/if}
 
-  {#if saveMessage}
-    <p class="save-message">{saveMessage}</p>
-  {/if}
+    {#if saveMessage}
+      <p class="save-message">{saveMessage}</p>
+    {/if}
 
-  {#if !currentKit || showNameField}
-    <div class="kit-name-field">
-      <label class="kit-name-label" for="kit-name-input">Kit name</label>
-      <input
-        id="kit-name-input"
-        class="kit-name-input"
-        type="text"
-        bind:value={kitName}
-        maxlength="100"
-        disabled={isSaving}
-      />
+    {#if !currentKit || showNameField}
+      <div class="kit-name-field">
+        <label class="kit-name-label" for="kit-name-input">Kit name</label>
+        <input
+          id="kit-name-input"
+          class="kit-name-input"
+          type="text"
+          bind:value={kitName}
+          maxlength="100"
+          disabled={isSaving}
+        />
+      </div>
+    {/if}
+
+    <div class="button-row">
+      {#if currentKit && !showNameField}
+        <button
+          class="close-button"
+          on:click={handleSave}
+          disabled={isSaving || !anyReady}
+          type="button"
+        >
+          {isSaving ? 'Saving…' : 'Save'}
+        </button>
+      {/if}
+
+      {#if currentKit && !showNameField}
+        <button
+          class="close-button secondary"
+          on:click={openSaveAs}
+          disabled={isSaving || !anyReady}
+          type="button"
+        >
+          Save As
+        </button>
+      {:else}
+        <button
+          class="close-button"
+          on:click={handleSaveAs}
+          disabled={isSaving || !anyReady}
+          type="button"
+        >
+          {isSaving ? 'Saving…' : 'Save As'}
+        </button>
+      {/if}
+
+      <button class="close-button secondary" on:click={handleClose} type="button">Close</button>
     </div>
-  {/if}
-
-  <div class="button-row">
-    {#if currentKit && !showNameField}
-      <button
-        class="close-button"
-        on:click={handleSave}
-        disabled={isSaving || !anyReady}
-        type="button"
-      >
-        {isSaving ? 'Saving…' : 'Save'}
-      </button>
-    {/if}
-
-    {#if currentKit && !showNameField}
-      <button
-        class="close-button secondary"
-        on:click={openSaveAs}
-        disabled={isSaving || !anyReady}
-        type="button"
-      >
-        Save As
-      </button>
-    {:else}
-      <button
-        class="close-button"
-        on:click={handleSaveAs}
-        disabled={isSaving || !anyReady}
-        type="button"
-      >
-        {isSaving ? 'Saving…' : 'Save As'}
-      </button>
-    {/if}
-
-    <button class="close-button secondary" on:click={handleClose} type="button">Close</button>
   </div>
 </div>
 
@@ -288,7 +293,14 @@
   @media (max-width: 480px) {
     .pad-grid {
       grid-template-columns: repeat(2, 1fr);
+      max-width: 120px;
     }
+  }
+
+  /* The controls wrapper is transparent in portrait so the elements sit
+     directly in the column, exactly as before. */
+  .save-controls {
+    display: contents;
   }
 
   .pad {
@@ -423,5 +435,79 @@
   .close-button[disabled] {
     opacity: 0.5;
     cursor: default;
+  }
+
+  /* Landscape: pads on the left, controls on the right. Everything must fit
+     without scrolling in short landscape viewports. */
+  @media (orientation: landscape) and (max-height: 500px) {
+    .save-screen {
+      flex-direction: row;
+      align-items: center;
+      justify-content: center;
+      gap: 1.25rem;
+      padding: 0.75rem;
+      box-sizing: border-box;
+      overflow: hidden;
+    }
+
+    /* Title and summary are hidden in landscape only */
+    h1,
+    .kit-summary {
+      display: none;
+    }
+
+    /* Left column: fixed-size pads, 2 pads per row regardless of tile count */
+    .pad-grid {
+      width: auto;
+      max-width: none;
+      grid-template-columns: repeat(var(--pad-cols, 2), min(52px, 16vh));
+      gap: 6px;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .pad {
+      width: min(52px, 16vh);
+      height: min(52px, 16vh);
+      aspect-ratio: auto;
+      border-radius: 8px;
+    }
+
+    .pad-number {
+      font-size: 0.9rem;
+    }
+
+    .pad-duration,
+    .pad-empty,
+    .pad-saving {
+      font-size: 0.65rem;
+    }
+
+    .pad-saved {
+      font-size: 0.9rem;
+    }
+
+    /* Right column: controls stacked */
+    .save-controls {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      min-width: 0;
+    }
+
+    .kit-name-field {
+      max-width: 260px;
+    }
+
+    .button-row {
+      gap: 0.5rem;
+    }
+
+    .button-row .close-button {
+      padding: 0.6rem 1.25rem;
+      font-size: 1rem;
+    }
   }
 </style>
