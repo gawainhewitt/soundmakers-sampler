@@ -143,35 +143,6 @@
     {/if}
   </div>
 
-  <div class="pad-grid save-left" style="--pad-cols: {padColumns};">
-    {#each Array(tileCount) as _, index}
-      {@const status = tileStatuses[index] || 'empty'}
-      {@const filled = status === 'ready'}
-      {@const progress = padProgress[index] || { state: 'idle', message: '' }}
-      <div
-        class="pad"
-        class:filled={filled}
-        class:saving={progress.state === 'saving'}
-        class:error={progress.state === 'error'}
-        style="background-color: {filled ? SQUARE_COLORS[index % SQUARE_COLORS.length] : '#e8e8e8'};"
-      >
-        <span class="pad-number">{index + 1}</span>
-
-        {#if progress.state === 'saving'}
-          <span class="pad-saving">saving…</span>
-        {:else if progress.state === 'saved'}
-          <span class="pad-saved">✓</span>
-        {:else if progress.state === 'error'}
-          <span class="pad-error">✗ {progress.message}</span>
-        {:else if filled}
-          <span class="pad-duration">{formatDuration(getTileDuration(index))}</span>
-        {:else}
-          <span class="pad-empty">empty</span>
-        {/if}
-      </div>
-    {/each}
-  </div>
-
   <div class="save-controls save-right">
     <h1>{title}</h1>
 
@@ -231,6 +202,35 @@
 
       <button class="close-button secondary" on:click={handleClose} type="button">Close</button>
     </div>
+  </div>
+
+  <div class="pad-grid save-left" style="--pad-cols: {padColumns};">
+    {#each Array(tileCount) as _, index}
+      {@const status = tileStatuses[index] || 'empty'}
+      {@const filled = status === 'ready'}
+      {@const progress = padProgress[index] || { state: 'idle', message: '' }}
+      <div
+        class="pad"
+        class:filled={filled}
+        class:saving={progress.state === 'saving'}
+        class:error={progress.state === 'error'}
+        style="background-color: {filled ? SQUARE_COLORS[index % SQUARE_COLORS.length] : '#e8e8e8'};"
+      >
+        <span class="pad-number">{index + 1}</span>
+
+        {#if progress.state === 'saving'}
+          <span class="pad-saving">saving…</span>
+        {:else if progress.state === 'saved'}
+          <span class="pad-saved">✓</span>
+        {:else if progress.state === 'error'}
+          <span class="pad-error">✗ {progress.message}</span>
+        {:else if filled}
+          <span class="pad-duration">{formatDuration(getTileDuration(index))}</span>
+        {:else}
+          <span class="pad-empty">empty</span>
+        {/if}
+      </div>
+    {/each}
   </div>
 </div>
 
