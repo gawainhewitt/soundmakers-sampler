@@ -276,8 +276,9 @@
     top: 0;
     left: 0;
     width: 100vw;
-    height: 100vh;
-    height: 100dvh;
+    height: 100vh;                      /* fallback: large viewport */
+    height: -webkit-fill-available;     /* iOS 9-15: URL-bar aware */
+    height: 100dvh;                     /* modern iOS: dynamic viewport */
     background-color: white;
     display: flex;
     flex-direction: column;
