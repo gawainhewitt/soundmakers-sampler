@@ -124,8 +124,6 @@
 </script>
 
 <div class="save-screen">
-  <h1>{title}</h1>
-
   <div class="kit-summary">
     <div class="summary-row">
       <span class="summary-label">Tiles</span>
@@ -145,7 +143,7 @@
     {/if}
   </div>
 
-  <div class="pad-grid" style="--pad-cols: {padColumns};">
+  <div class="pad-grid save-left" style="--pad-cols: {padColumns};">
     {#each Array(tileCount) as _, index}
       {@const status = tileStatuses[index] || 'empty'}
       {@const filled = status === 'ready'}
@@ -174,7 +172,9 @@
     {/each}
   </div>
 
-  <div class="save-controls">
+  <div class="save-controls save-right">
+    <h1>{title}</h1>
+
     {#if currentKit}
       <p class="saving-to">Saving to: {currentKit.title || 'Untitled'}</p>
     {/if}
@@ -252,6 +252,9 @@
   }
 
   h1 {
+    /* Keep the title on top in the portrait column now that it lives inside
+       the (portrait-transparent) controls container. */
+    order: -1;
     font-size: 2.5rem;
     color: #333;
     margin: 0;
@@ -442,18 +445,31 @@
   @media (orientation: landscape) and (max-height: 500px) {
     .save-screen {
       flex-direction: row;
-      align-items: center;
+      align-items: flex-start;
       justify-content: center;
       gap: 1.25rem;
       padding: 0.75rem;
+      padding-top: 0.75rem;
       box-sizing: border-box;
       overflow: hidden;
     }
 
-    /* Title and summary are hidden in landscape only */
-    h1,
+    /* The summary stays hidden in landscape; the title returns, inside the
+       right column, styled as requested. */
     .kit-summary {
       display: none;
+    }
+
+    h1 {
+      font-size: 1.4rem;
+      margin: 0 0 0.5rem 0;
+      text-align: left;
+    }
+
+    /* Left and right columns anchor to the top of the row */
+    .save-left,
+    .save-right {
+      align-self: flex-start;
     }
 
     /* Left column: fixed-size pads, 2 pads per row regardless of tile count */
