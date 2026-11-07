@@ -277,21 +277,23 @@
     left: 0;
     width: 100vw;
     height: 100vh;
+    height: 100dvh;
     background-color: white;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: flex-start;
-    gap: 0.75rem;
-    padding: 0.75rem 1rem;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
     padding-top: max(0.75rem, env(safe-area-inset-top));
+    padding-bottom: calc(0.5rem + env(safe-area-inset-bottom));
     box-sizing: border-box;
     z-index: 9999;
-    overflow-y: auto;
+    overflow: hidden;
   }
 
   h1 {
-    font-size: 2.5rem;
+    font-size: 1.8rem;
     color: #333;
     margin: 0;
   }
@@ -304,7 +306,7 @@
     max-width: 420px;
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: 0.6rem;
   }
 
   .kit-section-label {
@@ -319,8 +321,8 @@
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    gap: 0.75rem;
-    padding: 0.75rem 1rem;
+    gap: 0.35rem;
+    padding: 0.5rem 0.75rem;
     border: 2px solid #eee;
     border-radius: 12px;
   }
@@ -371,7 +373,7 @@
     justify-content: space-between;
     align-items: center;
     gap: 0.5rem;
-    padding-top: 0.5rem;
+    padding-top: 0.25rem;
   }
 
   .page-label {
@@ -429,11 +431,12 @@
     background-color: #06C0F0;
     color: white;
     border: none;
-    padding: 1rem 3rem;
-    font-size: 1.2rem;
+    padding: 0.6rem 2rem;
+    font-size: 1.05rem;
     font-weight: 600;
     border-radius: 50px;
     cursor: pointer;
+    flex-shrink: 0;
   }
 
   /* Compact two-column layout for short landscape viewports */
