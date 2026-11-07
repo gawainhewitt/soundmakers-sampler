@@ -239,33 +239,33 @@
         </div>
       {/each}
     {/if}
-
-    {#if padsets.length > 0}
-      <div class="pager-row">
-        <button
-          class="delete-button"
-          on:click={() => goToPage(page - 1)}
-          disabled={page === 1 || anyActionInProgress()}
-          type="button"
-        >
-          Previous
-        </button>
-        <span class="page-label">Page {page}</span>
-        <button
-          class="delete-button"
-          on:click={() => goToPage(page + 1)}
-          disabled={!hasMore || anyActionInProgress()}
-          type="button"
-        >
-          Next
-        </button>
-      </div>
-    {/if}
-
-    {#if kitError}
-      <p class="kit-error">{kitError}</p>
-    {/if}
   </div>
+
+  {#if padsets.length > 0}
+    <div class="pager-row">
+      <button
+        class="delete-button"
+        on:click={() => goToPage(page - 1)}
+        disabled={page === 1 || anyActionInProgress()}
+        type="button"
+      >
+        Previous
+      </button>
+      <span class="page-label">Page {page}</span>
+      <button
+        class="delete-button"
+        on:click={() => goToPage(page + 1)}
+        disabled={!hasMore || anyActionInProgress()}
+        type="button"
+      >
+        Next
+      </button>
+    </div>
+  {/if}
+
+  {#if kitError}
+    <p class="kit-error">{kitError}</p>
+  {/if}
 
   <button class="close-button" on:click={handleClose}>Close</button>
 </div>
@@ -282,9 +282,9 @@
     flex-direction: column;
     align-items: center;
     justify-content: flex-start;
-    gap: 2rem;
-    padding: 1.5rem 1rem;
-    padding-top: max(1.5rem, env(safe-area-inset-top));
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    padding-top: max(0.75rem, env(safe-area-inset-top));
     box-sizing: border-box;
     z-index: 9999;
     overflow-y: auto;
@@ -297,6 +297,9 @@
   }
 
   .kit-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
     width: 100%;
     max-width: 420px;
     display: flex;
@@ -354,12 +357,16 @@
   }
 
   .kit-error {
+    flex-shrink: 0;
     font-size: 0.9rem;
     color: #e74c3c;
     margin: 0;
   }
 
   .pager-row {
+    width: 100%;
+    max-width: 420px;
+    flex-shrink: 0;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -446,9 +453,7 @@
       gap: 0.5rem;
     }
 
-    .kit-section-label,
-    .pager-row,
-    .kit-error {
+    .kit-section-label {
       grid-column: 1 / -1;
     }
 
@@ -475,6 +480,10 @@
 
     .kit-meta {
       font-size: 0.75rem;
+    }
+
+    .pager-row {
+      max-width: 900px;
     }
 
     .load-button,
