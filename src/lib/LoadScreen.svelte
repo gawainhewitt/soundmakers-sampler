@@ -281,8 +281,11 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 2rem;
+    padding: 1.5rem 1rem;
+    padding-top: max(1.5rem, env(safe-area-inset-top));
+    box-sizing: border-box;
     z-index: 9999;
     overflow-y: auto;
   }
@@ -424,5 +427,63 @@
     font-weight: 600;
     border-radius: 50px;
     cursor: pointer;
+  }
+
+  /* Compact two-column layout for short landscape viewports */
+  @media (orientation: landscape) and (max-height: 500px) {
+    .load-screen {
+      gap: 0.75rem;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+    }
+
+    .kit-list {
+      max-width: 900px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem;
+    }
+
+    .kit-section-label,
+    .pager-row,
+    .kit-error {
+      grid-column: 1 / -1;
+    }
+
+    .kit-item {
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.5rem 0.75rem;
+      gap: 0.5rem;
+    }
+
+    .kit-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .kit-actions {
+      flex-shrink: 0;
+    }
+
+    .kit-name {
+      font-size: 0.95rem;
+    }
+
+    .kit-meta {
+      font-size: 0.75rem;
+    }
+
+    .load-button,
+    .delete-button {
+      padding: 0.4rem 0.7rem;
+    }
+
+    .close-button {
+      padding: 0.6rem 2rem;
+    }
   }
 </style>
