@@ -276,9 +276,7 @@
     top: 0;
     left: 0;
     width: 100vw;
-    height: 100vh;                      /* fallback: large viewport */
-    height: -webkit-fill-available;     /* iOS 9-15: URL-bar aware */
-    height: 100dvh;                     /* modern iOS: dynamic viewport */
+    height: 100vh;                      /* fallback: large viewport */                 /* modern iOS: dynamic viewport */
     background-color: white;
     display: flex;
     flex-direction: column;
@@ -438,6 +436,7 @@
     border-radius: 50px;
     cursor: pointer;
     flex-shrink: 0;
+    margin-bottom: 3rem;
   }
 
   /* Compact two-column layout for short landscape viewports */
