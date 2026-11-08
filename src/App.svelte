@@ -184,7 +184,7 @@
 {#if currentScreen === 'splash'}
   <SplashScreen
     title="Tiles"
-    instructions="Tap a tile to record a sound. Tap again to play it back."
+    instructions="Tap a tile or use keys ZXCVBNM, to record a sound. Tap again to play it back."
     footerNote="On Apple devices, turn off silent mode"
     on:click={handleSplashClick}
   />
