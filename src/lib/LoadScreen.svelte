@@ -124,9 +124,20 @@
     }
   }
 
+  // 2 kits per page in landscape, 4 in portrait
+  function getPerPage() {
+    return window.innerWidth > window.innerHeight ? 2 : 4;
+  }
+
+  // Per-page size of the last loaded page (so resize/rotate events that don't
+  // change orientation don't trigger a reload).
+  let lastPerPage = 0;
+
   async function loadPage(n) {
+    const perPage = getPerPage();
+    lastPerPage = perPage;
     try {
-      const result = await listPadsetPage({ page: n, perPage: 4 });
+      const result = await listPadsetPage({ page: n, perPage: perPage });
       padsets = result.items;
       page = n;
       hasMore = result.hasMore;
@@ -154,12 +165,30 @@
     if (e.key === 'Enter' || e.key === 'Escape') handleClose();
   }
 
+  // Reload the current page, stepping back if the page is past the end for
+  // the new per-page size (e.g. after rotating with fewer kits loaded).
+  async function reloadForOrientation() {
+    if (getPerPage() === lastPerPage) return;
+    let n = page;
+    await loadPage(n);
+    while (n > 1 && padsets.length === 0 && !hasMore) {
+      n -= 1;
+      await loadPage(n);
+    }
+  }
+
   onMount(() => {
     window.addEventListener('keydown', handleKeydown);
+    window.addEventListener('resize', reloadForOrientation);
+    window.addEventListener('orientationchange', reloadForOrientation);
     loadPage(1);
   });
 
-  onDestroy(() => window.removeEventListener('keydown', handleKeydown));
+  onDestroy(() => {
+    window.removeEventListener('keydown', handleKeydown);
+    window.removeEventListener('resize', reloadForOrientation);
+    window.removeEventListener('orientationchange', reloadForOrientation);
+  });
 </script>
 
 <div class="load-screen">
@@ -276,7 +305,9 @@
     top: 0;
     left: 0;
     width: 100vw;
-    height: 100vh;                      /* fallback: large viewport */                 /* modern iOS: dynamic viewport */
+    height: 100vh;                      /* fallback: large viewport */
+    height: -webkit-fill-available;     /* iOS 9-15: URL-bar aware */
+    height: 100dvh;                     /* modern iOS: dynamic viewport */
     background-color: white;
     display: flex;
     flex-direction: column;
@@ -436,23 +467,20 @@
     border-radius: 50px;
     cursor: pointer;
     flex-shrink: 0;
-    margin-bottom: 3rem;
   }
 
-  /* Compact two-column layout for short landscape viewports */
+  /* Compact full-width layout for short landscape viewports: single column,
+     list as a 2-column grid, pager and Close centred below. */
   @media (orientation: landscape) and (max-height: 500px) {
-    .load-screen {
-      gap: 0.75rem;
-    }
-
     h1 {
       font-size: 1.5rem;
     }
 
     .kit-list {
-      max-width: 900px;
+      width: 100%;
+      max-width: none;
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
       gap: 0.5rem;
     }
 
@@ -461,23 +489,35 @@
     }
 
     .kit-item {
+      display: flex;
       flex-direction: row;
       align-items: center;
       justify-content: space-between;
+      min-width: 0;
       padding: 0.5rem 0.75rem;
-      gap: 0.5rem;
     }
 
     .kit-info {
-      flex: 1;
+      flex: 1 1 auto;
       min-width: 0;
+      width: auto;
+      margin-right: 0.5rem;
     }
 
     .kit-actions {
       flex-shrink: 0;
     }
 
+    /* iOS 9 has no flex gap: space the card buttons with margins */
+    .kit-actions .load-button + .delete-button,
+    .kit-actions .delete-button + .delete-button {
+      margin-left: 0.4rem;
+    }
+
     .kit-name {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
       font-size: 0.95rem;
     }
 
@@ -486,16 +526,22 @@
     }
 
     .pager-row {
-      max-width: 900px;
+      width: 100%;
+      max-width: none;
+      justify-content: center;
     }
 
-    .load-button,
-    .delete-button {
-      padding: 0.4rem 0.7rem;
+    .page-label {
+      margin: 0 0.5rem;
     }
 
     .close-button {
       padding: 0.6rem 2rem;
+    }
+
+    .load-button,
+    .delete-button {
+      padding: 0.3rem 0.6rem;
     }
   }
 </style>
