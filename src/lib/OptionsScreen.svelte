@@ -45,6 +45,11 @@
   $: columns = grid.cols;
   $: rows = grid.rows;
 
+  // Phones in landscape have a short viewport; iPads are taller than 500px.
+  // When true, the settings screen uses the compact side-by-side layout and
+  // the grid is sized by CSS instead of the JS measurement.
+  $: isShortLandscape = orientation === 'landscape' && window.innerHeight <= 500;
+
   $: editorStatus = selectedTile !== null
     ? (clearedTiles.has(selectedTile) ? 'empty' : (tileStatuses[selectedTile] || 'empty'))
     : null;
@@ -349,7 +354,7 @@
     <div class="grid-area">
       <div
         class="tile-grid {orientation}"
-        style="width: {gridSize}px; height: {gridSize}px; grid-template-columns: repeat({columns}, 1fr); grid-template-rows: repeat({rows}, 1fr);"
+        style="grid-template-columns: repeat({columns}, 1fr); grid-template-rows: repeat({rows}, 1fr);{!isShortLandscape ? ` width: ${gridSize}px; height: ${gridSize}px;` : ''}"
       >
         {#each Array(selectedCount) as _, index}
           {@const isCleared = clearedTiles.has(index)}
@@ -512,6 +517,10 @@
     left: 0;
     width: 100vw;
     height: 100vh;
+    /* Safari/standalone fallbacks: fill the visible area when the browser
+       chrome is visible (short landscape) without changing taller layouts */
+    height: -webkit-fill-available;
+    height: 100dvh;
     background-color: white;
     display: flex;
     flex-direction: column;
@@ -531,6 +540,70 @@
       max-width: 100vh;
       left: 50%;
       transform: translateX(-50%);
+    }
+  }
+
+  /* Phones in landscape (Safari's toolbar takes a large part of the height):
+     mirror the mockup — count buttons and Done in the left column, the tile
+     grid in the right column, sized from vh so it fits without a measurement.
+     iPads are taller than 500px and keep the centred layout above. */
+  @media (orientation: landscape) and (max-height: 500px) {
+    .options-screen {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: auto auto;
+      align-items: start;
+      align-content: start;
+      gap: 0.5rem 0.75rem;
+      padding: 0.75rem;
+      /* Undo the centring max-width rule above for short viewports */
+      max-width: none;
+      left: auto;
+      transform: none;
+      overflow: hidden;
+    }
+
+    /* The title is hidden, like the Save screen hides its summary */
+    .options-screen h1 {
+      display: none;
+    }
+
+    /* Left column: tile count on top, Done directly underneath */
+    .setting--count {
+      grid-column: 1;
+      grid-row: 1;
+    }
+
+    .close-button {
+      grid-column: 1;
+      grid-row: 2;
+      justify-self: center;
+      align-self: start;
+    }
+
+    /* Right column: the label with the grid below it, aligned to the top */
+    .setting--grow {
+      grid-column: 2;
+      grid-row: 1 / 3;
+      align-self: start;
+      min-width: 0;
+    }
+
+    /* Grid sized like the Save screen pads: big enough to read, small enough
+       to fit short landscape. The inline 1fr tracks size to these tiles. */
+    .setting--grow .tile-grid {
+      width: auto;
+      height: auto;
+      gap: 6px;
+    }
+
+    .setting--grow .tile {
+      width: min(62px, 19vh);
+      height: min(62px, 19vh);
+    }
+
+    .setting--grow .tile-label {
+      font-size: 0.85rem;
     }
   }
 
