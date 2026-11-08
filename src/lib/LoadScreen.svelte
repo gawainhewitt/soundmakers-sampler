@@ -124,9 +124,12 @@
     }
   }
 
-  // 2 kits per page in landscape, 4 in portrait
+  // 2 kits per page only on phones in landscape (short side of the viewport
+  // is small, e.g. ~390-430pt on iPhone); 4 everywhere else.
   function getPerPage() {
-    return window.innerWidth > window.innerHeight ? 2 : 4;
+    const shortSide = Math.min(window.innerWidth, window.innerHeight);
+    const isPhoneLandscape = window.innerWidth > window.innerHeight && shortSide <= 500;
+    return isPhoneLandscape ? 2 : 4;
   }
 
   // Per-page size of the last loaded page (so resize/rotate events that don't
