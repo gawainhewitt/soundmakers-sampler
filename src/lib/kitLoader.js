@@ -110,28 +110,39 @@ export async function loadKit({ engine, padsetId, tileCount }) {
     : [];
 
   // BUG A: cover every pad. If the kit has more pads than the session, grow the
-  // session's tile count to match; otherwise loop over the session's pads.
+  // session's tile count to match; otherwise use the session's pads.
   const sessionCount = engine.getTileCount ? engine.getTileCount() : tileCount;
   const loopCount = Math.max(sessionCount, soundIds.length);
   if (loopCount > sessionCount && engine.setTileCount) {
     engine.setTileCount(loopCount);
   }
 
+  // Pads to fetch, in index order. Null pads (or session pads beyond the kit's
+  // length) are emptied up front and never fetched, so no stale sound survives.
+  const padJobs = [];
   for (let index = 0; index < loopCount; index++) {
     const soundId = index < soundIds.length ? soundIds[index] : null;
-
-    // Null pad (or a session pad beyond the kit's length): empty it, even if it
-    // was never recorded, so no stale sound survives.
     if (soundId === null || soundId === undefined) {
       engine.clearTile(index);
       continue;
     }
+    padJobs.push({ index, soundId });
+  }
 
+  // Fetch and decode up to this many pads at once. Engine calls for a pad only
+  // ever write to that pad's own index, so parallel runs stay per-index safe.
+  const CONCURRENCY = 4;
+  // Next job to take. Incremented synchronously before any await, so each job
+  // is claimed by exactly one worker.
+  let cursor = 0;
+
+  async function loadOnePad(job) {
+    const { index, soundId } = job;
     try {
       const sound = await getItem(soundId);
       if (sound.type !== 'sound') {
         result.skipped++;
-        continue;
+        return;
       }
 
       const data = sound.data || {};
@@ -139,14 +150,14 @@ export async function loadKit({ engine, padsetId, tileCount }) {
       const file = (sound.files || []).find((f) => f.id === audioFileId);
       if (!file || !file.url) {
         result.errors.push(`Pad ${index + 1}: no audio file`);
-        continue;
+        return;
       }
 
       const bytes = await fetchFileBytes(fileUrlFor(audioFileId, file.url));
       const ok = await engine.loadTileFromArrayBuffer(bytes, index);
       if (!ok) {
         result.errors.push(`Pad ${index + 1}: could not decode audio`);
-        continue;
+        return;
       }
 
       // Apply stored edit settings (defaults if missing). Right after loading,
@@ -173,6 +184,15 @@ export async function loadKit({ engine, padsetId, tileCount }) {
       result.errors.push(`Pad ${index + 1}: ${err && err.message ? err.message : String(err)}`);
     }
   }
+
+  async function worker() {
+    while (cursor < padJobs.length) {
+      const job = padJobs[cursor++];
+      await loadOnePad(job);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, padJobs.length) }, worker));
 
   return result;
 }
