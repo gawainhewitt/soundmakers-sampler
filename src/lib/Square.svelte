@@ -8,6 +8,7 @@
   export let status = 'empty'; // 'empty' | 'recording' | 'ready'
   export let playing = false;
   export let playDuration = 0; // seconds
+  export let playId = 0; // increments on every trigger; restarts the sweep
 
   // Generate a brighter version of the tile colour for the fill overlay
   function brightenColor(hex) {
@@ -49,10 +50,14 @@
   role="button"
   tabindex="0"
 >
-  <!-- Playback fill overlay — sweeps left to right -->
-  {#if playing}
-    <div class="play-fill" style={fillStyle}></div>
-  {/if}
+  <!-- Playback fill overlay — sweeps left to right. Keyed on the trigger
+       counter so a re-trigger while already playing destroys and recreates
+       the element, restarting the animation from 0% -->
+  {#key playId}
+    {#if playing}
+      <div class="play-fill" style={fillStyle}></div>
+    {/if}
+  {/key}
 
   {#if status === 'empty'}
     <svg class="icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">

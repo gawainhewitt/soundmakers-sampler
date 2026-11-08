@@ -22,6 +22,10 @@
   // Timers to reset playing state after sample finishes
   let playTimers = Array(tileCount).fill(null);
 
+  // Per-tile trigger counter: incremented on every play so Square can restart
+  // the sweep animation even when the tile is already playing.
+  let playIds = Array(tileCount).fill(0);
+
   // Keep internal play state in sync when the tile count changes
   $: if (tileCount !== tilePlayStates.length) {
     for (let i = tileCount; i < playTimers.length; i++) {
@@ -31,6 +35,7 @@
       tilePlayStates[i] || { playing: false, duration: 0 }
     );
     playTimers = Array.from({ length: tileCount }, (_, i) => playTimers[i] || null);
+    playIds = Array.from({ length: tileCount }, (_, i) => playIds[i] || 0);
   }
 
   // Grid dimensions depend on orientation and tile count.
@@ -49,6 +54,10 @@
       clearTimeout(playTimers[index]);
       playTimers[index] = null;
     }
+
+    // Bump the trigger counter so Square recreates the sweep element
+    playIds[index] += 1;
+    playIds = [...playIds];
 
     tilePlayStates[index] = { playing: true, duration: duration };
     tilePlayStates = [...tilePlayStates];
@@ -144,6 +153,7 @@
       status={tileStatuses[index]}
       playing={tilePlayStates[index].playing}
       playDuration={tilePlayStates[index].duration}
+      playId={playIds[index]}
       on:tap={() => handleTileTap(index)}
     />
   {/each}
