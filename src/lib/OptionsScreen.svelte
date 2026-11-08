@@ -171,6 +171,9 @@
       // After cropping, the whole buffer is the trimmed region
       trimStart = 0;
       trimEnd = 1;
+      // cropToTrim replaced the tile's buffer with a new object: re-read it so
+      // the waveform redraws the cropped audio instead of the stale buffer
+      editorBuffer = getTileBuffer(selectedTile);
     }
   }
 
