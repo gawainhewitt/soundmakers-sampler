@@ -2,14 +2,14 @@
 // so they stay visually consistent (same colours, same layout).
 
 export const SQUARE_COLORS = [
-  '#FF4E3A', // red-orange
-  '#FFD05A', // yellow
   '#6EEAA0', // mint green
-  '#A8C86A', // olive green
-  '#FF6B9D', // hot pink
+  '#FF4E3A', // red
+  '#FFD05A', // yellow
   '#FF9130', // orange
   '#B97FE8', // purple
-  '#5BEDA0', // bright green
+  '#A8C86A', // olive green
+  '#FF6B9D', // hot pink
+  '#6CB8F0', // blue
 ];
 
 // Grid dimensions per tile count and orientation, chosen so tiles fill the
