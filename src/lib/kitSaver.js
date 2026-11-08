@@ -97,34 +97,58 @@ export async function saveKit({ engine, tileCount, tileStatuses, onPadStatus, ti
     }
   }
 
+  // Which ready pads will be saved, in index order (see the worker pool below).
+  const readyPads = [];
+  for (let index = 0; index < tileCount; index++) {
+    const status = tileStatuses[index] || 'empty';
+    if (status === 'ready') readyPads.push(index);
+  }
+
   // Sound ids referenced by kits OTHER than the one being overwritten. Used to
   // decide whether a server-loaded pad can be updated in place, and which old
   // sounds are safe to delete after an overwrite.
   const sharedSoundIds = new Set();
   let sharedUnknown = false;
-  try {
-    const otherKits = await listAllPadsets();
-    for (const other of otherKits) {
-      if (padsetId && other.id === padsetId) continue;
-      const ids = Array.isArray(other.data && other.data.soundIds) ? other.data.soundIds : [];
-      for (const id of ids) {
-        if (id !== null && id !== undefined) sharedSoundIds.add(id);
+
+  // Only server-loaded pads can share sounds with other kits, so skip the full
+  // kit-list fetch when none of the ready pads is server-loaded. When it does
+  // run it must always be fresh — it protects other kits, so it is never cached
+  // between saves.
+  const anyServerLoadedPad = readyPads.some((index) => {
+    const ref = engine.getServerRef ? engine.getServerRef(index) : { soundId: null, fileId: null };
+    return !!(ref.soundId && ref.fileId);
+  });
+
+  if (anyServerLoadedPad) {
+    try {
+      const otherKits = await listAllPadsets();
+      for (const other of otherKits) {
+        if (padsetId && other.id === padsetId) continue;
+        const ids = Array.isArray(other.data && other.data.soundIds) ? other.data.soundIds : [];
+        for (const id of ids) {
+          if (id !== null && id !== undefined) sharedSoundIds.add(id);
+        }
       }
+    } catch (listErr) {
+      // If we can't see the other kits we must not risk altering their sounds:
+      // server-loaded pads get re-uploaded, and old sounds are kept.
+      sharedUnknown = true;
     }
-  } catch (listErr) {
-    // If we can't see the other kits we must not risk altering their sounds:
-    // server-loaded pads get re-uploaded, and old sounds are kept.
-    sharedUnknown = true;
   }
 
   // Audio file id per saved sound, for markTileFromServer afterwards.
   const savedFileIds = new Array(tileCount).fill(null);
 
-  // 1. Save each ready pad's sound
-  for (let index = 0; index < tileCount; index++) {
-    const status = tileStatuses[index] || 'empty';
-    if (status !== 'ready') continue;
+  // 1. Save each ready pad's sound, up to CONCURRENCY at once. Each pad writes
+  // only to its own index in soundIds / savedFileIds / padsFailed, so parallel
+  // saves stay per-index safe. withRateLimitRetry keeps the single 429 retry on
+  // both the uploads and the item creates.
+  const CONCURRENCY = 2;
+  // Next pad to save. Incremented synchronously before any await, so each job
+  // is claimed by exactly one worker.
+  let cursor = 0;
 
+  async function saveOnePad(index) {
     try {
       onPadStatus(index, 'saving');
 
@@ -161,7 +185,7 @@ export async function saveKit({ engine, tileCount, tileStatuses, onPadStatus, ti
         soundIds[index] = item.id;
         savedFileIds[index] = serverRef.fileId;
         onPadStatus(index, 'saved');
-        continue;
+        return;
       }
 
       // Server-loaded pad that is shared with another kit (or sharing unknown):
@@ -216,6 +240,15 @@ export async function saveKit({ engine, tileCount, tileStatuses, onPadStatus, ti
       }
     }
   }
+
+  async function worker() {
+    while (cursor < readyPads.length) {
+      const index = readyPads[cursor++];
+      await saveOnePad(index);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, readyPads.length) }, worker));
 
   const savedAny = soundIds.some((id) => id !== null);
 
