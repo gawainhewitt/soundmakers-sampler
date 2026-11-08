@@ -57,6 +57,10 @@
     left: 0;
     width: 100vw;
     height: 100vh;
+    /* Safari/standalone fallback: fill the visible area so the bottom logos
+       are not hidden under the browser chrome in short landscape */
+    height: -webkit-fill-available;
+    height: 100dvh;
     background-color: white;
     display: flex;
     flex-direction: column;
