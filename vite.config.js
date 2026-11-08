@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import legacy from '@vitejs/plugin-legacy';
 import fs from 'fs';
@@ -20,9 +20,14 @@ function findLocalCerts() {
   };
 }
 
-export default defineConfig(({ command }) => {
+export default defineConfig(({ command, mode }) => {
   const isDev = command === 'serve';
   const localCerts = isDev ? findLocalCerts() : null;
+
+  // Optional, dev-only: when set, proxy /api to the staging site instead of
+  // the Prism mock. Requests stay same-origin, so the browser sends no CORS
+  // preflight. The value is the staging origin, e.g. https://staging.orchlab.org
+  const stagingOrigin = loadEnv(mode, process.cwd(), '').VITE_STAGING_PROXY;
 
   if (isDev && !localCerts) {
     console.warn(
@@ -44,17 +49,27 @@ export default defineConfig(({ command }) => {
       host: true,
       https: localCerts || undefined,
       proxy: {
-        '/api': {
-          target: 'http://127.0.0.1:4010',
-          changeOrigin: true,
-          rewrite: (p) => p.replace(/^\/api/, ''),
-          configure: (proxy) => {
-            proxy.on('proxyReq', (proxyReq) => {
-              // Dev-only mock auth: Prism checks that the cookie is present, not its value
-              proxyReq.setHeader('Cookie', 'wordpress_logged_in_{hash}=mock');
-            });
-          },
-        },
+        '/api': stagingOrigin
+          ? {
+              // Staging mode: forward /api/... to the staging API. No mock
+              // cookie is added; auth comes from the app-password
+              // Authorization header, which is passed through untouched.
+              target: stagingOrigin,
+              changeOrigin: true,
+              secure: true, // keep TLS certificate checks on
+              rewrite: (p) => p.replace(/^\/api/, '/wp-json/orchlab-sampler/v1'),
+            }
+          : {
+              target: 'http://127.0.0.1:4010',
+              changeOrigin: true,
+              rewrite: (p) => p.replace(/^\/api/, ''),
+              configure: (proxy) => {
+                proxy.on('proxyReq', (proxyReq) => {
+                  // Dev-only mock auth: Prism checks that the cookie is present, not its value
+                  proxyReq.setHeader('Cookie', 'wordpress_logged_in_{hash}=mock');
+                });
+              },
+            },
       },
     },
     build: {

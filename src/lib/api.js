@@ -1,4 +1,10 @@
-const BASE = import.meta.env.VITE_API_BASE || '/api';
+// Relative API base. In dev with VITE_STAGING_PROXY, requests must stay
+// same-origin (through the Vite proxy) so the browser sends no CORS preflight.
+// Production always uses VITE_API_BASE exactly as before.
+const BASE =
+  import.meta.env.DEV && import.meta.env.VITE_STAGING_PROXY
+    ? '/api'
+    : (import.meta.env.VITE_API_BASE || '/api');
 
 // Site origin for the nonce endpoint. In staging BASE is a full URL ending in
 // /wp-json/orchlab-sampler/v1 — strip that suffix to get the origin. In dev
