@@ -392,7 +392,7 @@
     ></div>
 
     {#if editorStatus === 'ready'}
-      <div class="waveform-area" style="height: {waveformHeight}px;">
+      <div class="waveform-area" style="{!isShortLandscape ? `height: ${waveformHeight}px;` : ''}">
         <Waveform
           buffer={editorBuffer}
           {cursor}
@@ -404,100 +404,108 @@
       </div>
 
       <div class="editor-controls">
-        <button class="action-button" on:click={togglePlay} type="button">
-          {isPlaying ? 'Stop' : 'Play'}
-        </button>
-
-        <button
-          class="action-button"
-          class:active={reversed}
-          on:click={handleReverseToggle}
-          type="button"
-        >
-          Reverse {reversed ? 'On' : 'Off'}
-        </button>
-
-        <div class="effect-control">
-          <label class="effect-label" for="speed-slider">Speed: <strong>{speed.toFixed(2)}×</strong></label>
-          <input
-            id="speed-slider"
-            type="range"
-            min="0.25"
-            max="2"
-            step="0.05"
-            bind:value={speed}
-            on:input={handleSpeedInput}
-            on:change={handleSpeedInput}
-          />
-        </div>
-
-        <div class="effect-control">
-          <label class="effect-label" for="reverb-slider">Reverb: <strong>{Math.round(reverb * 100)}%</strong></label>
-          <input
-            id="reverb-slider"
-            type="range"
-            min="0"
-            max="1"
-            step="0.01"
-            bind:value={reverb}
-            on:input={handleReverbInput}
-            on:change={handleReverbInput}
-          />
-        </div>
-
-        <div class="effect-control">
-          <label class="effect-label" for="delay-slider">Delay: <strong>{Math.round(delay * 100)}%</strong></label>
-          <input
-            id="delay-slider"
-            type="range"
-            min="0"
-            max="1"
-            step="0.01"
-            bind:value={delay}
-            on:input={handleDelayInput}
-            on:change={handleDelayInput}
-          />
-        </div>
-
-        <div class="effect-control">
-          <label class="effect-label" for="volume-slider">Volume: <strong>{formatDb(volumeDb)}</strong></label>
-          <input
-            id="volume-slider"
-            type="range"
-            min="-60"
-            max="24"
-            step="1"
-            bind:value={volumeDb}
-            on:input={handleVolumeInput}
-            on:change={handleVolumeInput}
-          />
-          <div class="effect-buttons">
-            <button class="action-button small" on:click={handleAutoLevel} type="button">
-              Auto level
+        <div class="editor-col editor-col--left">
+          <div class="editor-row">
+            <button class="action-button" on:click={togglePlay} type="button">
+              {isPlaying ? 'Stop' : 'Play'}
             </button>
+
             <button
-              class="action-button small"
-              on:click={handleUndoVolume}
-              disabled={!canUndoAutoLevel(selectedTile)}
+              class="action-button"
+              class:active={reversed}
+              on:click={handleReverseToggle}
               type="button"
             >
-              Undo level
+              Reverse {reversed ? 'On' : 'Off'}
             </button>
+          </div>
+
+          <div class="effect-control">
+            <label class="effect-label" for="speed-slider">Speed: <strong>{speed.toFixed(2)}×</strong></label>
+            <input
+              id="speed-slider"
+              type="range"
+              min="0.25"
+              max="2"
+              step="0.05"
+              bind:value={speed}
+              on:input={handleSpeedInput}
+              on:change={handleSpeedInput}
+            />
+          </div>
+
+          <div class="effect-control">
+            <label class="effect-label" for="reverb-slider">Reverb: <strong>{Math.round(reverb * 100)}%</strong></label>
+            <input
+              id="reverb-slider"
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              bind:value={reverb}
+              on:input={handleReverbInput}
+              on:change={handleReverbInput}
+            />
+          </div>
+
+          <div class="effect-control">
+            <label class="effect-label" for="delay-slider">Delay: <strong>{Math.round(delay * 100)}%</strong></label>
+            <input
+              id="delay-slider"
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              bind:value={delay}
+              on:input={handleDelayInput}
+              on:change={handleDelayInput}
+            />
           </div>
         </div>
 
-        <button
-          class="action-button danger"
-          on:click={handleCropToTrim}
-          disabled={trimCoversWholeSound}
-          type="button"
-        >
-          Discard outside trim
-        </button>
+        <div class="editor-col editor-col--right">
+          <div class="effect-control">
+            <label class="effect-label" for="volume-slider">Volume: <strong>{formatDb(volumeDb)}</strong></label>
+            <input
+              id="volume-slider"
+              type="range"
+              min="-60"
+              max="24"
+              step="1"
+              bind:value={volumeDb}
+              on:input={handleVolumeInput}
+              on:change={handleVolumeInput}
+            />
+            <div class="effect-buttons">
+              <button class="action-button small" on:click={handleAutoLevel} type="button">
+                Auto level
+              </button>
+              <button
+                class="action-button small"
+                on:click={handleUndoVolume}
+                disabled={!canUndoAutoLevel(selectedTile)}
+                type="button"
+              >
+                Undo level
+              </button>
+            </div>
+          </div>
 
-        <button class="action-button danger" on:click={() => toggleClear(selectedTile)} type="button">
-          Clear
-        </button>
+          <div class="editor-row">
+            <button
+              class="action-button danger"
+              on:click={handleCropToTrim}
+              disabled={trimCoversWholeSound}
+              type="button"
+            >
+              Discard outside trim
+            </button>
+
+            <button class="action-button danger" on:click={() => toggleClear(selectedTile)} type="button">
+              Clear
+            </button>
+          </div>
+        </div>
       </div>
     {:else if clearedTiles.has(selectedTile)}
       <button class="action-button" on:click={() => toggleClear(selectedTile)} type="button">
@@ -783,6 +791,14 @@
     grid-column: 1 / -1; /* span the full width */
   }
 
+  /* Column / row wrappers used only by the short-landscape editor layout.
+     In every other layout they dissolve, so the portrait grid sees exactly
+     the same items as before. */
+  .editor-col,
+  .editor-row {
+    display: contents;
+  }
+
   .editor-controls .action-button {
     width: 100%;
     padding: 0.9rem 1.25rem;
@@ -879,6 +895,133 @@
 
     .effect-buttons {
       flex-wrap: nowrap;
+    }
+  }
+
+  /* Phones in landscape: the tile editor becomes two columns — waveform and
+     music controls on the left, level / trim / back controls on the right —
+     with the waveform sized from the viewport so nothing needs measuring. */
+  @media (orientation: landscape) and (max-height: 500px) {
+    .editor-panel {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: minmax(64px, 1fr) auto;
+      align-items: stretch;
+      align-content: start;
+      gap: 0.35rem 0.75rem;
+      padding: 0.35rem 0.75rem;
+      overflow: hidden;
+    }
+
+    /* Hide the title and the tile-colour strip above the waveform */
+    .editor-panel h2,
+    .editor-tile-preview {
+      display: none;
+    }
+
+    /* The controls wrapper dissolves so its two columns place directly in
+       the panel grid */
+    .editor-controls {
+      display: contents;
+    }
+
+    .editor-col {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+
+    .editor-col--left {
+      grid-column: 1;
+      grid-row: 2;
+    }
+
+    /* The right column lives entirely in row 1, so Back (row 2) always sits
+       below it and the two can never overlap. Row 1 is minmax(64px, 1fr) and
+       grows to fit this column's content. */
+    .editor-col--right {
+      grid-column: 2;
+      grid-row: 1;
+    }
+
+    /* Keep the right column's internals tight so it stays within its row */
+    .editor-col--right .effect-control,
+    .editor-col--right .effect-buttons {
+      gap: 0.35rem;
+    }
+
+    .editor-row {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .editor-row .action-button {
+      flex: 1 1 0;
+      width: auto;
+    }
+
+    /* The waveform fills the left column's top row: at least 64px, then all
+       the free space below the other left-column controls */
+    .editor-panel > .waveform-area {
+      grid-column: 1;
+      grid-row: 1;
+    }
+
+    /* Back sits under the right column */
+    .editor-panel > .action-button:last-child {
+      grid-column: 2;
+      grid-row: 2;
+      justify-self: center;
+      align-self: start;
+      padding: 0.5rem 2.5rem;
+    }
+
+    /* Restore recording / no-recording: top-left of the grid */
+    .editor-panel > .action-button:not(:last-child),
+    .editor-panel > p {
+      grid-column: 1;
+      justify-self: center;
+      align-self: start;
+    }
+
+    /* Shorter big buttons: Play, Reverse, Discard outside trim, Clear */
+    .editor-controls .action-button {
+      padding: 0.4rem 1.25rem;
+    }
+
+    .action-button.small {
+      padding: 0.5rem 1rem;
+    }
+
+    /* Sliders: label and slider share one line, halving the height */
+    .effect-control {
+      flex-direction: row;
+      flex-wrap: wrap;
+      align-items: center;
+      width: 100%;
+      max-width: none;
+    }
+
+    .effect-label {
+      white-space: nowrap;
+    }
+
+    .effect-control input[type="range"] {
+      flex: 1 1 auto;
+      min-width: 0;
+      width: auto;
+    }
+
+    /* Auto level / Undo level wrap to their own line under the volume slider
+       and fill half the column width each */
+    .effect-buttons {
+      flex: 1 1 100%;
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .effect-buttons .action-button {
+      flex: 1 1 0;
     }
   }
 </style>
