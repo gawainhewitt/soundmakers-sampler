@@ -383,7 +383,7 @@
 </div>
 
 {#if selectedTile !== null}
-  <div class="editor-panel">
+  <div class="editor-panel" class:has-recording={editorStatus === 'ready'}>
     <h2>Tile {selectedTile + 1}</h2>
 
     <div
@@ -902,7 +902,9 @@
      music controls on the left, level / trim / back controls on the right —
      with the waveform sized from the viewport so nothing needs measuring. */
   @media (orientation: landscape) and (max-height: 500px) {
-    .editor-panel {
+    /* Two-column layout for a recorded tile only. Without a recording the
+       panel keeps its base centred column, as in portrait. */
+    .editor-panel.has-recording {
       display: grid;
       grid-template-columns: 1fr 1fr;
       grid-template-rows: minmax(64px, 1fr) auto;
@@ -921,17 +923,17 @@
 
     /* The controls wrapper dissolves so its two columns place directly in
        the panel grid */
-    .editor-controls {
+    .editor-panel.has-recording .editor-controls {
       display: contents;
     }
 
-    .editor-col {
+    .editor-panel.has-recording .editor-col {
       display: flex;
       flex-direction: column;
       gap: 0.35rem;
     }
 
-    .editor-col--left {
+    .editor-panel.has-recording .editor-col--left {
       grid-column: 1;
       grid-row: 2;
     }
@@ -939,49 +941,41 @@
     /* The right column lives entirely in row 1, so Back (row 2) always sits
        below it and the two can never overlap. Row 1 is minmax(64px, 1fr) and
        grows to fit this column's content. */
-    .editor-col--right {
+    .editor-panel.has-recording .editor-col--right {
       grid-column: 2;
       grid-row: 1;
     }
 
     /* Keep the right column's internals tight so it stays within its row */
-    .editor-col--right .effect-control,
-    .editor-col--right .effect-buttons {
+    .editor-panel.has-recording .editor-col--right .effect-control,
+    .editor-panel.has-recording .editor-col--right .effect-buttons {
       gap: 0.35rem;
     }
 
-    .editor-row {
+    .editor-panel.has-recording .editor-row {
       display: flex;
       gap: 0.5rem;
     }
 
-    .editor-row .action-button {
+    .editor-panel.has-recording .editor-row .action-button {
       flex: 1 1 0;
       width: auto;
     }
 
     /* The waveform fills the left column's top row: at least 64px, then all
        the free space below the other left-column controls */
-    .editor-panel > .waveform-area {
+    .editor-panel.has-recording > .waveform-area {
       grid-column: 1;
       grid-row: 1;
     }
 
     /* Back sits under the right column */
-    .editor-panel > .action-button:last-child {
+    .editor-panel.has-recording > .action-button:last-child {
       grid-column: 2;
       grid-row: 2;
       justify-self: center;
       align-self: start;
       padding: 0.5rem 2.5rem;
-    }
-
-    /* Restore recording / no-recording: top-left of the grid */
-    .editor-panel > .action-button:not(:last-child),
-    .editor-panel > p {
-      grid-column: 1;
-      justify-self: center;
-      align-self: start;
     }
 
     /* Shorter big buttons: Play, Reverse, Discard outside trim, Clear */
