@@ -16,6 +16,7 @@
 
   let canvasEl;
   let dragging = null; // 'start' | 'end' | null
+  let resizeObserver = null; // redraws when the container is finally sized
 
   // Horizontal inset (px) so trim handles are visible and grabbable even when
   // they sit at the very start/end of the buffer (the default range).
@@ -165,9 +166,16 @@
     draw();
     window.addEventListener('resize', handleResize);
     window.addEventListener('orientationchange', handleResize);
+    // The editor sizes the waveform container after render, so redraw when
+    // the container gets its final size, not just on window resizes.
+    if (typeof ResizeObserver !== 'undefined' && canvasEl && canvasEl.parentElement) {
+      resizeObserver = new ResizeObserver(() => { draw(); });
+      resizeObserver.observe(canvasEl.parentElement);
+    }
   });
 
   onDestroy(() => {
+    if (resizeObserver) resizeObserver.disconnect();
     window.removeEventListener('resize', handleResize);
     window.removeEventListener('orientationchange', handleResize);
   });
@@ -181,5 +189,5 @@
   on:pointermove={handleMove}
   on:pointerup={handleUp}
   on:pointercancel={handleUp}
-  style="touch-action: none;"
+  style="touch-action: none; display: block;"
 ></canvas>
