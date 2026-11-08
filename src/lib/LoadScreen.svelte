@@ -1,5 +1,6 @@
 <script>
   import { createEventDispatcher, onMount, onDestroy } from 'svelte';
+  import { apiMessage } from './api.js';
 
   const dispatch = createEventDispatcher();
 
@@ -43,7 +44,7 @@
         title: padset.title || '',
       });
     } catch (err) {
-      kitError = (err && err.message) ? err.message : String(err);
+      kitError = apiMessage(err);
       kitLoadingId = null;
     }
   }
@@ -65,7 +66,7 @@
         await loadPage(page - 1);
       }
     } catch (err) {
-      kitError = (err && err.message) ? err.message : String(err);
+      kitError = apiMessage(err);
     } finally {
       deletingId = null;
     }
@@ -99,7 +100,7 @@
       padsets = padsets.map((p) => (p.id === padset.id ? { ...p, title: updated.title } : p));
       renamingId = null;
     } catch (err) {
-      kitError = (err && err.message) ? err.message : String(err);
+      kitError = apiMessage(err);
     } finally {
       renameBusy = false;
     }
@@ -146,7 +147,7 @@
       hasMore = result.hasMore;
       padsetsError = '';
     } catch (err) {
-      padsetsError = (err && err.message) ? err.message : String(err);
+      padsetsError = apiMessage(err);
     }
   }
 
@@ -196,6 +197,10 @@
 
 <div class="load-screen">
   <h1>{title}</h1>
+
+  {#if kitError}
+    <p class="kit-error">{kitError}</p>
+  {/if}
 
   <div class="kit-list">
     <!-- Saved kits from the server -->
@@ -293,10 +298,6 @@
         Next
       </button>
     </div>
-  {/if}
-
-  {#if kitError}
-    <p class="kit-error">{kitError}</p>
   {/if}
 
   <button class="close-button" on:click={handleClose}>Close</button>

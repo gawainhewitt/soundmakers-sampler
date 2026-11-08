@@ -1,7 +1,7 @@
 // Saves the current kit to the server: each ready pad becomes a 'sound' item,
 // and one 'padset' item references them.
 
-import { uploadFile, createItem, updateItem, deleteSound, fetchFileBytes, authHeaders, fileUrlFor } from './api.js';
+import { uploadFile, createItem, updateItem, deleteSound, fetchFileBytes, authHeaders, fileUrlFor, checkLogin, apiMessage } from './api.js';
 import { getItem, listAllPadsets } from './kitLoader.js';
 import { SQUARE_COLORS } from './tileConfig.js';
 
@@ -65,6 +65,18 @@ export async function saveKit({ engine, tileCount, tileStatuses, onPadStatus, ti
     deletedOldSounds: [],
     skippedShared: 0,
   };
+
+  // 0. Pre-flight login check: stop before the pad loop if the visitor isn't
+  // logged in, so the UI can show one login message instead of pad failures.
+  try {
+    await checkLogin();
+  } catch (loginErr) {
+    if (loginErr && (loginErr.loggedOut === true || loginErr.status === 401 || loginErr.status === 403)) {
+      result.loggedOut = true;
+      return result;
+    }
+    throw loginErr;
+  }
 
   // ── Overwrite setup: existing title + previous sound ids ────────────────
   let existingTitle = null;
@@ -185,9 +197,23 @@ export async function saveKit({ engine, tileCount, tileStatuses, onPadStatus, ti
       savedFileIds[index] = uploaded.id;
       onPadStatus(index, 'saved');
     } catch (err) {
-      const message = err && err.message ? err.message : String(err);
       padsFailed.push(index);
-      onPadStatus(index, 'error', message);
+      const e = err || {};
+      const isAuth = e.loggedOut === true || e.status === 401 || e.status === 403;
+      const isServer =
+        !isAuth &&
+        (e.name === 'TypeError' || (typeof e.status === 'number' && e.status >= 500 && e.status <= 599));
+      if (isAuth) {
+        // Auth failures are shown once at the top of the screen, not per pad.
+        result.loggedOut = true;
+        onPadStatus(index, 'error', '');
+      } else if (isServer) {
+        // Server/network failures are shown once at the top, not per pad.
+        result.cannotReach = true;
+        onPadStatus(index, 'error', '');
+      } else {
+        onPadStatus(index, 'error', apiMessage(err));
+      }
     }
   }
 

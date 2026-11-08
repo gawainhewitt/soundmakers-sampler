@@ -1,6 +1,7 @@
 <script>
   import { createEventDispatcher, onMount, onDestroy } from 'svelte';
   import { SQUARE_COLORS } from './tileConfig.js';
+  import { apiMessage } from './api.js';
 
   const dispatch = createEventDispatcher();
 
@@ -56,22 +57,31 @@
         ...opts,
         onPadStatus: (index, state, message) => setPadProgress(index, state, message),
       });
-      if (result.padsetId) lastPadsetId = result.padsetId;
-      if (result.padsFailed && result.padsFailed.length) {
-        saveMessage = `${result.padsFailed.length} pad(s) failed to save`;
+      if (result.loggedOut) {
+        saveMessage = 'Log in to use saved kits.';
+      } else if (result.cannotReach) {
+        saveMessage = "Can't reach the server. Try again.";
       } else {
-        saveMessage = 'Saved';
+        if (result.padsetId) lastPadsetId = result.padsetId;
+        if (result.padsFailed && result.padsFailed.length) {
+          saveMessage = `${result.padsFailed.length} pad(s) failed to save`;
+        } else {
+          saveMessage = 'Saved';
+        }
       }
 
       return result;
     } catch (err) {
       const message = (err && err.message) ? err.message : String(err);
-      saveMessage = message;
-
-      // If the kit we were overwriting is gone, offer Save As prefilled
+      // Already a plain-language flow (offers Save As); keep it as is.
       if (message === 'Kit no longer exists on the server') {
+        saveMessage = message;
+
+        // If the kit we were overwriting is gone, offer Save As prefilled
         kitName = (currentKit && currentKit.title) ? currentKit.title : 'Kit ' + new Date().toLocaleString();
         showNameField = true;
+      } else {
+        saveMessage = apiMessage(err);
       }
 
       return null;

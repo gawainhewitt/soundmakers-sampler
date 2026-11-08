@@ -16,7 +16,15 @@ export async function getNonce() {
   const res = await fetch(`${BASE_ORIGIN}/wp-admin/admin-ajax.php?action=rest-nonce`, {
     credentials: 'include',
   });
-  if (!res.ok) throw new Error(`nonce failed: ${res.status}`);
+  if (!res.ok) {
+    const err = new Error(`nonce failed: ${res.status}`);
+    err.status = res.status;
+    // 400/401/403 mean the visitor isn't logged in (or the session expired)
+    if (res.status === 400 || res.status === 401 || res.status === 403) {
+      err.loggedOut = true;
+    }
+    throw err;
+  }
   return res.text();
 }
 
@@ -44,18 +52,20 @@ async function apiError(res) {
   const message = body.message || body.error || `Request failed with status ${res.status}`;
   const err = new Error(message);
   err.status = res.status;
+  // 401/403 mean the visitor isn't logged in (or the nonce expired)
+  if (res.status === 401 || res.status === 403) err.loggedOut = true;
   if (body.code !== undefined) err.code = body.code;
   if (body.retryAfter !== undefined) err.retryAfter = body.retryAfter;
   return err;
 }
 
 // DEV ONLY: simulate API errors for testing error handling.
-// Set localStorage.setItem('mockError', '413' | '429' | '500') to trigger.
+// Set localStorage.setItem('mockError', '401' | '413' | '429' | '500') to trigger.
 // Remove this block before production.
 async function maybeMockError() {
   if (!import.meta.env.DEV) return;
   const code = localStorage.getItem('mockError');
-  if (code !== '413' && code !== '429' && code !== '500') return;
+  if (code !== '401' && code !== '413' && code !== '429' && code !== '500') return;
 
   const body = { code };
   if (code === '429') body.retryAfter = 5;
@@ -68,6 +78,31 @@ async function maybeMockError() {
   throw await apiError(fakeRes);
 }
 // END DEV ONLY
+
+// Maps a caught error to a plain-language message for the UI.
+export function apiMessage(err) {
+  if (!err) return 'Something went wrong. Please try again.';
+  if (err.loggedOut === true || err.status === 401 || err.status === 403) {
+    return 'Log in to use saved kits.';
+  }
+  const status = err.status;
+  // fetch() rejects with a TypeError when the network never connects; any 5xx
+  // means the server is up but unhealthy. Either way, retrying later helps.
+  if (err.name === 'TypeError' || (typeof status === 'number' && status >= 500 && status <= 599)) {
+    return "Can't reach the server. Try again.";
+  }
+  // Any other failure: show a generic line, but keep the real message in the
+  // console so it can still be debugged.
+  console.error('API error:', err.message || err);
+  return 'Something went wrong. Please try again.';
+}
+
+// Verify we can authenticate before starting a save, so a logged-out visitor
+// sees one clear message instead of noticing every single pad fail.
+export async function checkLogin() {
+  await maybeMockError(); // DEV ONLY: honours the mockError stub (e.g. '401')
+  await authHeaders();
+}
 
 export async function uploadFile(blob, filename) {
   await maybeMockError();
