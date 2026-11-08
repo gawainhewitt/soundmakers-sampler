@@ -85,7 +85,8 @@
     const gapTotal = 24 * Math.max(0, childCount - 1);
 
     const availH = window.innerHeight - fixedH - gapTotal;
-    waveformHeight = Math.min(240, Math.max(80, availH));
+    // Never below 64px so the trim handles stay grabbable when space runs out
+    waveformHeight = Math.min(240, Math.max(64, availH));
   }
 
   // ── Editor playback ───────────────────────────────────────────────────────
@@ -712,6 +713,8 @@
     left: 0;
     width: 100vw;
     height: 100vh;
+    height: -webkit-fill-available;
+    height: 100dvh; 
     background-color: white;
     z-index: 10000;
     display: flex;
@@ -838,6 +841,44 @@
 
     .editor-panel h2 {
       font-size: 1.5rem;
+    }
+  }
+
+  /* Phones in portrait: keep the tile editor usable. The trim handles need a
+     tall enough waveform, so never let it flex-shrink below its measured size,
+     and make the other controls more compact to free vertical space. */
+  @media (orientation: portrait) and (max-width: 480px) {
+    .editor-panel {
+      gap: 0.75rem;
+    }
+
+    .editor-panel h2 {
+      font-size: 1.5rem;
+    }
+
+    /* The measured height must hold: without this, flex-shrink crushes the
+       waveform (and its trim handles) when the panel overflows */
+    .waveform-area {
+      flex-shrink: 0;
+    }
+
+    /* Shorter big buttons: Play, Reverse, Discard outside trim, Clear */
+    .editor-controls .action-button {
+      padding: 0.5rem 1.25rem;
+    }
+
+    /* Back (and Restore recording): direct children of the panel */
+    .action-button {
+      padding: 0.5rem 2.5rem;
+    }
+
+    /* Auto level / Undo level keep their small size and sit on one row */
+    .action-button.small {
+      padding: 0.5rem 1rem;
+    }
+
+    .effect-buttons {
+      flex-wrap: nowrap;
     }
   }
 </style>
