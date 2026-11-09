@@ -1,11 +1,9 @@
 // Saves the current kit to the server: each ready pad becomes a 'sound' item,
 // and one 'padset' item references them.
 
-import { uploadFile, createItem, updateItem, deleteSound, fetchFileBytes, authHeaders, fileUrlFor, checkLogin, apiMessage } from './api.js';
+import { uploadFile, createItem, updateItem, deleteSound, checkLogin, apiMessage } from './api.js';
 import { getItem, listAllPadsets } from './kitLoader.js';
 import { SQUARE_COLORS } from './tileConfig.js';
-
-const BASE = import.meta.env.VITE_API_BASE || '/api';
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -28,20 +26,6 @@ async function withRateLimitRetry(fn) {
     }
     throw err;
   }
-}
-
-// Fetch a single item by id (same pattern as getItem in kitLoader.js).
-async function getSoundItem(id) {
-  const res = await fetch(`${BASE}/items/${id}`, {
-    credentials: 'include',
-    headers: await authHeaders(),
-  });
-  if (!res.ok) {
-    const err = new Error(`GET /items/${id} failed: ${res.status}`);
-    err.status = res.status;
-    throw err;
-  }
-  return res.json();
 }
 
 /**
@@ -188,37 +172,37 @@ export async function saveKit({ engine, tileCount, tileStatuses, onPadStatus, ti
         return;
       }
 
-      // Server-loaded pad that is shared with another kit (or sharing unknown):
-      // re-upload the same audio as a fresh file so no other kit is altered.
-      let blob;
+      // Shared server-loaded pad (or sharing unknown): reference the existing
+      // audio file instead of downloading and re-uploading it. The server lets
+      // a new sound item use any audio file the same user owns, and only
+      // removes a file once no item still uses it. Every data field below is
+      // read from the engine or derived from the pad index, so the old sound
+      // item is not re-fetched.
+      let audioFileId;
+      let extraData = {};
       if (serverRef.soundId && serverRef.fileId) {
-        const sound = await getSoundItem(serverRef.soundId);
-        const srcFile = (sound.files || []).find((f) => f.id === serverRef.fileId);
-        if (!srcFile || !srcFile.url) {
-          throw new Error(`Pad ${index + 1}: no audio file on server`);
-        }
-        const bytes = await fetchFileBytes(fileUrlFor(serverRef.fileId, srcFile.url));
-        blob = new Blob([bytes], { type: 'audio/mpeg' });
+        audioFileId = serverRef.fileId;
+        // The pad's fixed colour, carried on the sound item itself.
+        extraData.backgroundColor = SQUARE_COLORS[index % SQUARE_COLORS.length];
       } else {
-        blob = await engine.getTileMp3(index);
+        // Newly recorded pad: encode and upload its audio as a fresh file.
+        const blob = await engine.getTileMp3(index);
+        const uploaded = await withRateLimitRetry(() => uploadFile(blob, 'sound.mp3'));
+        audioFileId = uploaded.id;
       }
-
-      // Upload the audio (audio/mpeg; uploadFile sets the multipart content type).
-      // Always upload as a fresh file — never reuse an existing fileIds.
-      const uploaded = await withRateLimitRetry(() => uploadFile(blob, 'sound.mp3'));
 
       const body = {
         instrument: 'sampler',
         type: 'sound',
         title: `Pad ${index + 1}`.slice(0, 100), // Sound item title
         schemaVersion: 1,
-        data: { ...settings, audioFileId: uploaded.id },
-        fileIds: [uploaded.id],
+        data: { ...settings, audioFileId, ...extraData },
+        fileIds: [audioFileId],
       };
 
       const item = await withRateLimitRetry(() => createItem(body));
       soundIds[index] = item.id;
-      savedFileIds[index] = uploaded.id;
+      savedFileIds[index] = audioFileId;
       onPadStatus(index, 'saved');
     } catch (err) {
       padsFailed.push(index);
