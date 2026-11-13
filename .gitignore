@@ -38,3 +38,6 @@ dist-ssr
 
 mock-server/stateful/data/
 mock-server/stateful/node_modules
+
+
+frame-test.html
